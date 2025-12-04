@@ -106,7 +106,17 @@ npm run build
 npm run start:http
 ```
 
-The server will run on `http://localhost:3000` (configurable via `.env`).
+**With custom configuration (CLI flags override environment variables):**
+```bash
+node dist/http-server.js --api-key YOUR_KEY --port 3001 --host localhost
+```
+
+**With absolute path:**
+```bash
+/opt/homebrew/bin/node /absolute/path/to/dist/http-server.js --api-key YOUR_KEY
+```
+
+The server will run on `http://localhost:3000` (configurable via `.env` or CLI flags).
 
 ### Testing with MCP Inspector
 
@@ -114,11 +124,18 @@ See [TESTING.md](./TESTING.md) for detailed instructions on testing with MCP Ins
 
 Quick start:
 ```bash
+# Option 1: HTTP/SSE mode
 # Terminal 1: Start the HTTP server
-npm run dev:http
+npm run start:http
 
 # Terminal 2: Launch MCP Inspector
 npx @modelcontextprotocol/inspector http://localhost:3000/sse
+
+# Option 2: stdio mode (uses .env file)
+npx @modelcontextprotocol/inspector node /absolute/path/to/dist/index.js
+
+# Option 3: stdio mode with environment variable
+CONSIGNCLOUD_API_KEY=your_key npx @modelcontextprotocol/inspector node dist/index.js
 ```
 
 ### Using with Claude Desktop
@@ -128,12 +145,25 @@ Add this to your Claude Desktop configuration file:
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Windows**: `%APPDATA%/Claude/claude_desktop_config.json`
 
+**Recommended: Using .env file**
 ```json
 {
   "mcpServers": {
     "consigncloud": {
       "command": "node",
-      "args": ["/absolute/path/to/mcp-consigncloud/dist/index.js"],
+      "args": ["/Users/administrators/Documents/Workspace/github/mcp-consigncloud/dist/index.js"]
+    }
+  }
+}
+```
+
+**Alternative: Inline environment variables**
+```json
+{
+  "mcpServers": {
+    "consigncloud": {
+      "command": "node",
+      "args": ["/Users/administrators/Documents/Workspace/github/mcp-consigncloud/dist/index.js"],
       "env": {
         "CONSIGNCLOUD_API_KEY": "your_api_key_here"
       }
@@ -142,20 +172,7 @@ Add this to your Claude Desktop configuration file:
 }
 ```
 
-Or if using development mode:
-```json
-{
-  "mcpServers": {
-    "consigncloud": {
-      "command": "npx",
-      "args": ["-y", "tsx", "/absolute/path/to/mcp-consigncloud/src/index.ts"],
-      "env": {
-        "CONSIGNCLOUD_API_KEY": "your_api_key_here"
-      }
-    }
-  }
-}
-```
+See [CLAUDE_DESKTOP_SETUP.md](./CLAUDE_DESKTOP_SETUP.md) for detailed setup instructions.
 
 ## Available Tools
 
@@ -270,7 +287,17 @@ If you get authentication errors:
 If the server won't start:
 1. Check your `.env` file exists and contains valid values
 2. Verify network connectivity to `api.consigncloud.com`
-3. Check the console for specific error messages
+3. The HTTP server validates API connection on startup and shows clear error messages
+
+### HTTP/SSE Server Features
+
+The HTTP server includes:
+- ✅ **Startup validation** - Tests API connection before accepting requests
+- ✅ **CLI arguments** - Override env vars with `--api-key`, `--port`, `--host`
+- ✅ **Detailed errors** - Comprehensive error messages with HTTP status codes
+- ✅ **Session management** - Proper SSE session handling
+- ✅ **Health endpoint** - `/health` for monitoring
+- ✅ **Masked logging** - API keys are partially hidden in logs
 
 ## License
 

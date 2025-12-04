@@ -66,34 +66,38 @@ const transports = new Map<string, SSEServerTransport>();
 
 // Health check endpoint
 app.get('/health', (_req, res) => {
+  console.log('💓 GET /health');
   res.json({ status: 'ok', service: 'consigncloud-mcp-server' });
 });
 
 // SSE endpoint for MCP
 app.get('/sse', async (req, res) => {
-  console.log('New SSE connection established');
+  console.log('🔌 GET /sse - New SSE connection established');
 
   const transport = new SSEServerTransport('/message', res);
   const server = setupServer(client);
 
   // Store transport by session ID
   transports.set(transport.sessionId, transport);
-  console.log(`Session ${transport.sessionId} registered`);
+  console.log(`✅ Session ${transport.sessionId} registered (total active: ${transports.size})`);
 
   await server.connect(transport);
 
   // Handle client disconnect
   req.on('close', () => {
-    console.log(`SSE connection closed for session ${transport.sessionId}`);
+    console.log(`🔌 SSE connection closed for session ${transport.sessionId}`);
     transports.delete(transport.sessionId);
+    console.log(`📊 Active sessions: ${transports.size}`);
   });
 });
 
 // Message endpoint for SSE
 app.post('/message', async (req, res) => {
   const sessionId = req.query.sessionId as string;
+  console.log(`📨 POST /message - sessionId: ${sessionId || 'missing'}`);
 
   if (!sessionId) {
+    console.log('❌ Request rejected: Missing sessionId');
     res.status(400).json({ error: 'Missing sessionId query parameter' });
     return;
   }
@@ -101,8 +105,10 @@ app.post('/message', async (req, res) => {
   const transport = transports.get(sessionId);
 
   if (transport) {
+    console.log(`✅ Routing message to session ${sessionId}`);
     await transport.handlePostMessage(req, res);
   } else {
+    console.log(`❌ Session ${sessionId} not found (active sessions: ${transports.size})`);
     res.status(404).json({ error: 'Session not found' });
   }
 });

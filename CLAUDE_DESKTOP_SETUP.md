@@ -36,6 +36,22 @@ notepad %APPDATA%\Claude\claude_desktop_config.json
 
 Add this configuration (replace the paths and API key):
 
+**Option A: Using .env file (Recommended)**
+```json
+{
+  "mcpServers": {
+    "consigncloud": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/mcp-consigncloud/dist/index.js"
+      ]
+    }
+  }
+}
+```
+The server will read `CONSIGNCLOUD_API_KEY` from your `.env` file.
+
+**Option B: Using environment variables in config**
 ```json
 {
   "mcpServers": {
