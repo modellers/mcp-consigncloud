@@ -280,10 +280,11 @@ export function createTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          start_date: { type: 'string', description: 'Start date (ISO 8601)' },
-          end_date: { type: 'string', description: 'End date (ISO 8601)' },
-          interval: { type: 'string', description: 'Interval (day, week, month)' },
+          start_date: { type: 'string', description: 'Start date (ISO 8601: YYYY-MM-DD) - REQUIRED' },
+          end_date: { type: 'string', description: 'End date (ISO 8601: YYYY-MM-DD) - REQUIRED' },
+          bucket_size: { type: 'string', enum: ['day', 'week', 'month'], description: 'Time bucket size - REQUIRED' },
         },
+        required: ['start_date', 'end_date', 'bucket_size'],
       },
     },
     {
@@ -339,8 +340,8 @@ export function createTools(): Tool[] {
           },
           tag_price_gte: { type: 'number', description: 'Filter items with price >= this value (in cents)' },
           tag_price_lte: { type: 'number', description: 'Filter items with price <= this value (in cents)' },
-          created_gte: { type: 'string', description: 'Filter items created on or after this date (ISO 8601: YYYY-MM-DD)' },
-          created_lte: { type: 'string', description: 'Filter items created on or before this date (ISO 8601: YYYY-MM-DD)' },
+          date_from: { type: 'string', description: 'Filter items created on or after this date (ISO 8601: YYYY-MM-DD)' },
+          date_to: { type: 'string', description: 'Filter items created on or before this date (ISO 8601: YYYY-MM-DD)' },
           batch: { type: 'string', description: 'Filter by batch ID' },
           group_by: {
             type: 'string',
@@ -359,8 +360,8 @@ export function createTools(): Tool[] {
           status: { type: 'string', enum: ['completed', 'voided', 'returned'], description: 'Filter by sale status' },
           location: { type: 'string', description: 'Filter by location ID' },
           customer: { type: 'string', description: 'Filter by customer account ID' },
-          created_gte: { type: 'string', description: 'Filter sales created on or after this date (ISO 8601: YYYY-MM-DD)' },
-          created_lte: { type: 'string', description: 'Filter sales created on or before this date (ISO 8601: YYYY-MM-DD)' },
+          date_from: { type: 'string', description: 'Filter sales created on or after this date (ISO 8601: YYYY-MM-DD)' },
+          date_to: { type: 'string', description: 'Filter sales created on or before this date (ISO 8601: YYYY-MM-DD)' },
           payment_type: { type: 'string', description: 'Filter by payment type (cash, card, etc.)' },
           total_gte: { type: 'number', description: 'Filter sales with total >= this value (in cents)' },
           total_lte: { type: 'number', description: 'Filter sales with total <= this value (in cents)' },
@@ -384,8 +385,8 @@ export function createTools(): Tool[] {
         type: 'object',
         properties: {
           account_id: { type: 'string', description: 'Account ID (required)' },
-          created_gte: { type: 'string', description: 'Filter by items/sales created on or after this date (ISO 8601)' },
-          created_lte: { type: 'string', description: 'Filter by items/sales created on or before this date (ISO 8601)' },
+          date_from: { type: 'string', description: 'Filter by items/sales created on or after this date (ISO 8601: YYYY-MM-DD)' },
+          date_to: { type: 'string', description: 'Filter by items/sales created on or before this date (ISO 8601: YYYY-MM-DD)' },
           inventory_type: {
             type: 'string',
             enum: ['consignment', 'buy_outright', 'retail'],

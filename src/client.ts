@@ -3,8 +3,19 @@ import { Item, Sale, Account, Batch, ItemCategory, Location, PaginatedResponse, 
 
 export class ConsignCloudClient {
   private client: AxiosInstance;
+  private locale: string;
+  private currency: string;
+  private currencyDecimals: number;
 
   constructor(apiKey: string, baseURL: string = 'https://api.consigncloud.com/api/v1') {
+    // Initialize locale and currency settings
+    this.locale = process.env.STORE_LOCALE || 'en-US';
+    this.currency = process.env.STORE_CURRENCY || 'USD';
+
+    // Determine decimal places for currency (some currencies like JPY, ISK have 0 decimals)
+    const zeroDecimalCurrencies = ['JPY', 'KRW', 'ISK', 'CLP', 'VND', 'XAF', 'XOF', 'XPF'];
+    this.currencyDecimals = zeroDecimalCurrencies.includes(this.currency) ? 0 : 2;
+
     this.client = axios.create({
       baseURL,
       headers: {
@@ -75,22 +86,37 @@ export class ConsignCloudClient {
   // Items (Inventory)
   async listItems(params?: Record<string, any>): Promise<PaginatedResponse<Item>> {
     const response = await this.client.get('/items', { params });
-    return response.data;
+    return {
+      data: response.data.data.map((item: any) => this.convertItemResponse(item)),
+      next_cursor: response.data.next_cursor,
+    };
   }
 
   async getItem(id: string): Promise<Item> {
     const response = await this.client.get(`/items/${id}`);
-    return response.data;
+    return this.convertItemResponse(response.data);
   }
 
   async createItem(data: Partial<Item>): Promise<Item> {
-    const response = await this.client.post('/items', data);
-    return response.data;
+    // Convert user input to API cents
+    const apiData = {
+      ...data,
+      tag_price: data.tag_price ? this.convertToApiCents(data.tag_price) : undefined,
+      cost: data.cost ? this.convertToApiCents(data.cost) : undefined,
+    };
+    const response = await this.client.post('/items', apiData);
+    return this.convertItemResponse(response.data);
   }
 
   async updateItem(id: string, data: Partial<Item>): Promise<Item> {
-    const response = await this.client.patch(`/items/${id}`, data);
-    return response.data;
+    // Convert user input to API cents
+    const apiData = {
+      ...data,
+      tag_price: data.tag_price ? this.convertToApiCents(data.tag_price) : undefined,
+      cost: data.cost ? this.convertToApiCents(data.cost) : undefined,
+    };
+    const response = await this.client.patch(`/items/${id}`, apiData);
+    return this.convertItemResponse(response.data);
   }
 
   async deleteItem(id: string): Promise<void> {
@@ -99,7 +125,7 @@ export class ConsignCloudClient {
 
   async restoreItem(id: string): Promise<Item> {
     const response = await this.client.post(`/items/${id}/restore`);
-    return response.data;
+    return this.convertItemResponse(response.data);
   }
 
   async getItemStats(): Promise<any> {
@@ -120,53 +146,83 @@ export class ConsignCloudClient {
   // Sales
   async listSales(params?: Record<string, any>): Promise<PaginatedResponse<Sale>> {
     const response = await this.client.get('/sales', { params });
-    return response.data;
+    return {
+      data: response.data.data.map((sale: any) => this.convertSaleResponse(sale)),
+      next_cursor: response.data.next_cursor,
+    };
   }
 
   async getSale(id: string): Promise<Sale> {
     const response = await this.client.get(`/sales/${id}`);
-    return response.data;
+    return this.convertSaleResponse(response.data);
   }
 
   async createSale(data: Partial<Sale>): Promise<Sale> {
-    const response = await this.client.post('/sales', data);
-    return response.data;
+    // Convert user input to API cents
+    const apiData = {
+      ...data,
+      total: data.total ? this.convertToApiCents(data.total) : undefined,
+      subtotal: data.subtotal ? this.convertToApiCents(data.subtotal) : undefined,
+      tax: data.tax ? this.convertToApiCents(data.tax) : undefined,
+    };
+    const response = await this.client.post('/sales', apiData);
+    return this.convertSaleResponse(response.data);
   }
 
   async updateSale(id: string, data: Partial<Sale>): Promise<Sale> {
-    const response = await this.client.patch(`/sales/${id}`, data);
-    return response.data;
+    // Convert user input to API cents
+    const apiData = {
+      ...data,
+      total: data.total ? this.convertToApiCents(data.total) : undefined,
+      subtotal: data.subtotal ? this.convertToApiCents(data.subtotal) : undefined,
+      tax: data.tax ? this.convertToApiCents(data.tax) : undefined,
+    };
+    const response = await this.client.patch(`/sales/${id}`, apiData);
+    return this.convertSaleResponse(response.data);
   }
 
   async voidSale(id: string): Promise<Sale> {
     const response = await this.client.post(`/sales/${id}/void`);
-    return response.data;
+    return this.convertSaleResponse(response.data);
   }
 
   async refundSale(id: string, data?: any): Promise<Sale> {
     const response = await this.client.post(`/sales/${id}/refund`, data);
-    return response.data;
+    return this.convertSaleResponse(response.data);
   }
 
   // Accounts
   async listAccounts(params?: Record<string, any>): Promise<PaginatedResponse<Account>> {
     const response = await this.client.get('/accounts', { params });
-    return response.data;
+    return {
+      data: response.data.data.map((account: any) => this.convertAccountResponse(account)),
+      next_cursor: response.data.next_cursor,
+    };
   }
 
   async getAccount(id: string): Promise<Account> {
     const response = await this.client.get(`/accounts/${id}`);
-    return response.data;
+    return this.convertAccountResponse(response.data);
   }
 
   async createAccount(data: Partial<Account>): Promise<Account> {
-    const response = await this.client.post('/accounts', data);
-    return response.data;
+    // Convert user input to API cents
+    const apiData = {
+      ...data,
+      balance: data.balance ? this.convertToApiCents(data.balance) : undefined,
+    };
+    const response = await this.client.post('/accounts', apiData);
+    return this.convertAccountResponse(response.data);
   }
 
   async updateAccount(id: string, data: Partial<Account>): Promise<Account> {
-    const response = await this.client.patch(`/accounts/${id}`, data);
-    return response.data;
+    // Convert user input to API cents
+    const apiData = {
+      ...data,
+      balance: data.balance ? this.convertToApiCents(data.balance) : undefined,
+    };
+    const response = await this.client.patch(`/accounts/${id}`, apiData);
+    return this.convertAccountResponse(response.data);
   }
 
   async deleteAccount(id: string): Promise<void> {
@@ -272,7 +328,11 @@ export class ConsignCloudClient {
   }
 
   // Sales Trends
-  async getSalesTrends(params?: Record<string, any>): Promise<any> {
+  async getSalesTrends(params?: {
+    start_date: string;
+    end_date: string;
+    bucket_size: 'day' | 'week' | 'month';
+  }): Promise<any> {
     const response = await this.client.get('/trends/sales', { params });
     return response.data;
   }
@@ -281,6 +341,99 @@ export class ConsignCloudClient {
   async listBalanceEntries(params?: Record<string, any>): Promise<any> {
     const response = await this.client.get('/balance-entries', { params });
     return response.data;
+  }
+
+  // Utility Methods
+
+  /**
+   * Convert API cents to store currency (numeric value)
+   * @param apiCents - Amount in cents from API (100 cents = 1.00 USD)
+   * @returns Numeric value in store currency
+   */
+  private convertFromApiCents(apiCents: number | null | undefined): number {
+    if (apiCents == null) return 0;
+    // API stores in cents (100 cents = 1.00 USD = 1 ISK)
+    return apiCents / 100;
+  }
+
+  /**
+   * Convert store currency to API cents
+   * @param amount - Amount in store currency (e.g., 1000 ISK or 10.00 USD)
+   * @returns Amount in API cents
+   */
+  private convertToApiCents(amount: number | null | undefined): number {
+    if (amount == null) return 0;
+    // Convert to API cents (1000 ISK = 100000 cents, 10.00 USD = 1000 cents)
+    return Math.round(amount * 100);
+  }
+
+  /**
+   * Format currency value without symbol (locale-aware number formatting)
+   * @param apiCents - Amount in cents from API (API always uses 2-decimal system)
+   * @returns Formatted number string (e.g., "1,234.56" for USD, "1.234" for ISK)
+   */
+  private formatCurrency(apiCents: number): string {
+    const amount = this.convertFromApiCents(apiCents);
+    return new Intl.NumberFormat(this.locale, {
+      minimumFractionDigits: this.currencyDecimals,
+      maximumFractionDigits: this.currencyDecimals,
+      useGrouping: true,
+    }).format(amount);
+  }
+
+  /**
+   * Format already-converted currency value (for calculation results)
+   * @param amount - Amount already in store currency (ISK, USD, etc.)
+   * @returns Formatted number string
+   */
+  private formatAmount(amount: number): string {
+    return new Intl.NumberFormat(this.locale, {
+      minimumFractionDigits: this.currencyDecimals,
+      maximumFractionDigits: this.currencyDecimals,
+      useGrouping: true,
+    }).format(amount);
+  }
+
+  /**
+   * Convert Item response from API (cents) to store currency
+   */
+  private convertItemResponse(item: any): Item {
+    return {
+      ...item,
+      tag_price: this.convertFromApiCents(item.tag_price),
+      cost: item.cost ? this.convertFromApiCents(item.cost) : undefined,
+    };
+  }
+
+  /**
+   * Convert Sale response from API (cents) to store currency
+   */
+  private convertSaleResponse(sale: any): Sale {
+    return {
+      ...sale,
+      total: this.convertFromApiCents(sale.total),
+      subtotal: this.convertFromApiCents(sale.subtotal),
+      tax: this.convertFromApiCents(sale.tax),
+      items: sale.items?.map((item: any) => ({
+        ...item,
+        tag_price: item.tag_price ? this.convertFromApiCents(item.tag_price) : undefined,
+        total: item.total ? this.convertFromApiCents(item.total) : undefined,
+      })),
+      payments: sale.payments?.map((payment: any) => ({
+        ...payment,
+        amount: payment.amount ? this.convertFromApiCents(payment.amount) : undefined,
+      })),
+    };
+  }
+
+  /**
+   * Convert Account response from API (cents) to store currency
+   */
+  private convertAccountResponse(account: any): Account {
+    return {
+      ...account,
+      balance: this.convertFromApiCents(account.balance),
+    };
   }
 
   // Aggregation Methods
@@ -296,8 +449,8 @@ export class ConsignCloudClient {
     inventory_type?: string;
     tag_price_gte?: number;
     tag_price_lte?: number;
-    created_gte?: string;
-    created_lte?: string;
+    date_from?: string;
+    date_to?: string;
     batch?: string;
     group_by?: 'category' | 'location' | 'account' | 'inventory_type' | 'status';
   }): Promise<InventoryValueResult> {
@@ -312,14 +465,14 @@ export class ConsignCloudClient {
     if (filterParams.inventory_type) filters.push(`inventory_type=${filterParams.inventory_type}`);
     if (filterParams.tag_price_gte) filters.push(`tag_price>=${filterParams.tag_price_gte}`);
     if (filterParams.tag_price_lte) filters.push(`tag_price<=${filterParams.tag_price_lte}`);
-    if (filterParams.created_gte) filters.push(`created>=${filterParams.created_gte}`);
-    if (filterParams.created_lte) filters.push(`created<=${filterParams.created_lte}`);
+    if (filterParams.date_from) filters.push(`date_from=${filterParams.date_from}`);
+    if (filterParams.date_to) filters.push(`date_to=${filterParams.date_to}`);
     if (filterParams.batch) filters.push(`batch=${filterParams.batch}`);
 
     let allItems: Item[] = [];
     let cursor: string | null = null;
 
-    // Build query params with only defined values
+    // Build query params with only defined values (excluding date filters - not supported by API)
     const queryParams: Record<string, any> = { limit: 100 };
     if (filterParams.status) queryParams.status = filterParams.status;
     if (filterParams.category) queryParams.category = filterParams.category;
@@ -328,9 +481,8 @@ export class ConsignCloudClient {
     if (filterParams.inventory_type) queryParams.inventory_type = filterParams.inventory_type;
     if (filterParams.tag_price_gte !== undefined) queryParams.tag_price_gte = filterParams.tag_price_gte;
     if (filterParams.tag_price_lte !== undefined) queryParams.tag_price_lte = filterParams.tag_price_lte;
-    if (filterParams.created_gte) queryParams.created_gte = filterParams.created_gte;
-    if (filterParams.created_lte) queryParams.created_lte = filterParams.created_lte;
     if (filterParams.batch) queryParams.batch = filterParams.batch;
+    // NOTE: date_from/date_to NOT sent to API (not supported) - will filter client-side
 
     // Fetch all pages
     do {
@@ -340,10 +492,21 @@ export class ConsignCloudClient {
       cursor = response.next_cursor;
     } while (cursor);
 
+    // Apply client-side date filtering (API doesn't support this)
+    if (filterParams.date_from || filterParams.date_to) {
+      allItems = allItems.filter(item => {
+        if (!item.created) return false;
+        const itemDate = new Date(item.created);
+        if (filterParams.date_from && itemDate < new Date(filterParams.date_from)) return false;
+        if (filterParams.date_to && itemDate > new Date(filterParams.date_to)) return false;
+        return true;
+      });
+    }
+
     // Calculate totals
     let totalValue = 0;
     let totalItems = 0;
-    const breakdown: Record<string, { value: number; count: number }> = {};
+    const breakdown: Record<string, { value: number; value_formatted: string; count: number }> = {};
 
     for (const item of allItems) {
       // Items don't have a simple quantity field - use 1 as default or count from status
@@ -376,19 +539,38 @@ export class ConsignCloudClient {
         }
 
         if (!breakdown[groupKey]) {
-          breakdown[groupKey] = { value: 0, count: 0 };
+          breakdown[groupKey] = { value: 0, value_formatted: '', count: 0 };
         }
         breakdown[groupKey].value += itemValue;
         breakdown[groupKey].count += quantity;
       }
     }
 
+    // Format breakdown values
+    const formattedBreakdown: Record<string, { value: number; value_formatted: string; count: number }> | undefined =
+      group_by ? Object.fromEntries(
+        Object.entries(breakdown).map(([key, data]) => [
+          key,
+          {
+            value: data.value,
+            value_formatted: this.formatAmount(data.value),
+            count: data.count
+          }
+        ])
+      ) : undefined;
+
+    const avgValue = totalItems > 0 ? Math.round(totalValue / totalItems) : 0;
+
     return {
       total_value: totalValue,
+      total_value_formatted: this.formatAmount(totalValue),
       total_items: totalItems,
-      average_value: totalItems > 0 ? Math.round(totalValue / totalItems) : 0,
-      breakdown: group_by ? breakdown : undefined,
+      average_value: avgValue,
+      average_value_formatted: this.formatAmount(avgValue),
+      breakdown: formattedBreakdown,
       filters_applied: filters,
+      currency: this.currency,
+      locale: this.locale,
     };
   }
 
@@ -399,8 +581,8 @@ export class ConsignCloudClient {
     status?: string;
     location?: string;
     customer?: string;
-    created_gte?: string;
-    created_lte?: string;
+    date_from?: string;
+    date_to?: string;
     payment_type?: string;
     total_gte?: number;
     total_lte?: number;
@@ -414,8 +596,8 @@ export class ConsignCloudClient {
     if (filterParams.status) filters.push(`status=${filterParams.status}`);
     if (filterParams.location) filters.push(`location=${filterParams.location}`);
     if (filterParams.customer) filters.push(`customer=${filterParams.customer}`);
-    if (filterParams.created_gte) filters.push(`created>=${filterParams.created_gte}`);
-    if (filterParams.created_lte) filters.push(`created<=${filterParams.created_lte}`);
+    if (filterParams.date_from) filters.push(`date_from=${filterParams.date_from}`);
+    if (filterParams.date_to) filters.push(`date_to=${filterParams.date_to}`);
     if (filterParams.payment_type) filters.push(`payment_type=${filterParams.payment_type}`);
     if (filterParams.total_gte !== undefined) filters.push(`total>=${filterParams.total_gte}`);
     if (filterParams.total_lte !== undefined) filters.push(`total<=${filterParams.total_lte}`);
@@ -423,16 +605,15 @@ export class ConsignCloudClient {
     let allSales: Sale[] = [];
     let cursor: string | null = null;
 
-    // Build query params with only defined values
+    // Build query params with only defined values (excluding date filters - not supported by API)
     const queryParams: Record<string, any> = { limit: 100 };
     if (filterParams.status) queryParams.status = filterParams.status;
     if (filterParams.location) queryParams.location = filterParams.location;
     if (filterParams.customer) queryParams.customer = filterParams.customer;
-    if (filterParams.created_gte) queryParams.created_gte = filterParams.created_gte;
-    if (filterParams.created_lte) queryParams.created_lte = filterParams.created_lte;
     if (filterParams.payment_type) queryParams.payment_type = filterParams.payment_type;
     if (filterParams.total_gte !== undefined) queryParams.total_gte = filterParams.total_gte;
     if (filterParams.total_lte !== undefined) queryParams.total_lte = filterParams.total_lte;
+    // NOTE: date_from/date_to NOT sent to API (not supported) - will filter client-side
 
     // Fetch all pages
     do {
@@ -442,11 +623,22 @@ export class ConsignCloudClient {
       cursor = response.next_cursor;
     } while (cursor);
 
+    // Apply client-side date filtering (API doesn't support this)
+    if (filterParams.date_from || filterParams.date_to) {
+      allSales = allSales.filter(sale => {
+        if (!sale.created) return false;
+        const saleDate = new Date(sale.created);
+        if (filterParams.date_from && saleDate < new Date(filterParams.date_from)) return false;
+        if (filterParams.date_to && saleDate > new Date(filterParams.date_to)) return false;
+        return true;
+      });
+    }
+
     // Calculate totals
     let totalRevenue = 0;
     let totalTax = 0;
     let totalSales = 0;
-    const breakdown: Record<string, { revenue: number; tax: number; count: number }> = {};
+    const breakdown: Record<string, { revenue: number; revenue_formatted: string; tax: number; tax_formatted: string; count: number }> = {};
 
     for (const sale of allSales) {
       totalRevenue += sale.total || 0;
@@ -486,7 +678,7 @@ export class ConsignCloudClient {
         }
 
         if (!breakdown[groupKey]) {
-          breakdown[groupKey] = { revenue: 0, tax: 0, count: 0 };
+          breakdown[groupKey] = { revenue: 0, revenue_formatted: '', tax: 0, tax_formatted: '', count: 0 };
         }
         breakdown[groupKey].revenue += sale.total || 0;
         breakdown[groupKey].tax += sale.tax || 0;
@@ -494,13 +686,35 @@ export class ConsignCloudClient {
       }
     }
 
+    // Format breakdown values
+    const formattedBreakdown: Record<string, { revenue: number; revenue_formatted: string; tax: number; tax_formatted: string; count: number }> | undefined =
+      group_by ? Object.fromEntries(
+        Object.entries(breakdown).map(([key, data]) => [
+          key,
+          {
+            revenue: data.revenue,
+            revenue_formatted: this.formatAmount(data.revenue),
+            tax: data.tax,
+            tax_formatted: this.formatAmount(data.tax),
+            count: data.count
+          }
+        ])
+      ) : undefined;
+
+    const avgSale = totalSales > 0 ? Math.round(totalRevenue / totalSales) : 0;
+
     return {
       total_revenue: totalRevenue,
+      total_revenue_formatted: this.formatAmount(totalRevenue),
       total_tax: totalTax,
+      total_tax_formatted: this.formatAmount(totalTax),
       total_sales: totalSales,
-      average_sale: totalSales > 0 ? Math.round(totalRevenue / totalSales) : 0,
-      breakdown: group_by ? breakdown : undefined,
+      average_sale: avgSale,
+      average_sale_formatted: this.formatAmount(avgSale),
+      breakdown: formattedBreakdown,
       filters_applied: filters,
+      currency: this.currency,
+      locale: this.locale,
     };
   }
 
@@ -509,15 +723,15 @@ export class ConsignCloudClient {
    */
   async calculateAccountMetrics(params: {
     account_id: string;
-    created_gte?: string;
-    created_lte?: string;
+    date_from?: string;
+    date_to?: string;
     inventory_type?: string;
   }): Promise<AccountMetricsResult> {
-    const { account_id, created_gte, created_lte, inventory_type } = params;
+    const { account_id, date_from, date_to, inventory_type } = params;
     const filters: string[] = [`account_id=${account_id}`];
 
-    if (created_gte) filters.push(`created>=${created_gte}`);
-    if (created_lte) filters.push(`created<=${created_lte}`);
+    if (date_from) filters.push(`date_from=${date_from}`);
+    if (date_to) filters.push(`date_to=${date_to}`);
     if (inventory_type) filters.push(`inventory_type=${inventory_type}`);
 
     // Fetch account details
@@ -555,12 +769,11 @@ export class ConsignCloudClient {
     let totalSalesRevenue = 0;
     let commissionOwed = 0;
 
-    // Fetch all sales
+    // Fetch all sales (no date filter - API doesn't support it)
     let allSales: Sale[] = [];
     cursor = null;
     const salesQueryParams: Record<string, any> = { limit: 100 };
-    if (created_gte) salesQueryParams.created_gte = created_gte;
-    if (created_lte) salesQueryParams.created_lte = created_lte;
+    // NOTE: date_from/date_to NOT sent to API (not supported) - will filter client-side
 
     do {
       if (cursor) salesQueryParams.cursor = cursor;
@@ -568,6 +781,17 @@ export class ConsignCloudClient {
       allSales = allSales.concat(response.data);
       cursor = response.next_cursor;
     } while (cursor);
+
+    // Apply client-side date filtering (API doesn't support this)
+    if (date_from || date_to) {
+      allSales = allSales.filter(sale => {
+        if (!sale.created) return false;
+        const saleDate = new Date(sale.created);
+        if (date_from && saleDate < new Date(date_from)) return false;
+        if (date_to && saleDate > new Date(date_to)) return false;
+        return true;
+      });
+    }
 
     // Calculate sales revenue for items from this account
     for (const sale of allSales) {
@@ -589,12 +813,18 @@ export class ConsignCloudClient {
       account_id: account.id,
       account_name: [account.first_name, account.last_name].filter(Boolean).join(' ') || account.company || account.number,
       current_balance: account.balance,
+      current_balance_formatted: this.formatAmount(account.balance),
       inventory_value: inventoryValue,
+      inventory_value_formatted: this.formatAmount(inventoryValue),
       items_available: itemsAvailable,
       items_sold: itemsSold,
       total_sales_revenue: totalSalesRevenue,
+      total_sales_revenue_formatted: this.formatAmount(totalSalesRevenue),
       commission_owed: commissionOwed,
+      commission_owed_formatted: this.formatAmount(commissionOwed),
       filters_applied: filters,
+      currency: this.currency,
+      locale: this.locale,
     };
   }
 }
