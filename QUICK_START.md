@@ -41,16 +41,26 @@ npm run build
 **Option A: Test with MCP Inspector (Recommended First)**
 
 ```bash
-# Terminal 1
-npm run dev:http
+# Terminal 1 - Start the HTTP/SSE server
+npm run start:http
 
-# Terminal 2
+# Terminal 2 - Connect with MCP Inspector
 npx @modelcontextprotocol/inspector http://localhost:3000/sse
 ```
 
-Browser opens automatically at http://localhost:5173
+Browser opens automatically at http://localhost:5173 where you can test listing tools and calling them.
 
-**Option B: Use with Claude Desktop**
+**Option A.1: Run with absolute path and custom environment**
+
+```bash
+# Using absolute path with command line arguments
+/opt/homebrew/bin/node /absolute/path/to/mcp-consigncloud/dist/http-server.js \
+  --api-key YOUR_API_KEY \
+  --port 3000 \
+  --host localhost
+```
+
+**Option B: Use with Claude Desktop (stdio mode)**
 
 Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 

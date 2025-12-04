@@ -19,9 +19,55 @@ export class ConsignCloudClient {
       (error: AxiosError) => {
         if (error.response) {
           const data = error.response.data as any;
-          throw new Error(`API Error (${error.response.status}): ${data.error || error.message}`);
+          const status = error.response.status;
+          const method = error.config?.method?.toUpperCase();
+          const url = error.config?.url;
+
+          let errorMessage = `API Error ${status}`;
+
+          // Add context
+          if (method && url) {
+            errorMessage += ` (${method} ${url})`;
+          }
+
+          // Add specific error details
+          if (status === 401) {
+            errorMessage += ': Authentication failed - Invalid API key';
+          } else if (status === 403) {
+            errorMessage += ': Access forbidden - Check permissions';
+          } else if (status === 404) {
+            errorMessage += ': Resource not found';
+          } else if (status === 422) {
+            errorMessage += ': Validation error';
+          } else if (status === 429) {
+            errorMessage += ': Rate limit exceeded';
+          } else if (status >= 500) {
+            errorMessage += ': Server error';
+          }
+
+          // Add API error message if available
+          if (data?.error) {
+            errorMessage += ` - ${data.error}`;
+          } else if (data?.message) {
+            errorMessage += ` - ${data.message}`;
+          }
+
+          // Add validation errors if present
+          if (data?.errors && typeof data.errors === 'object') {
+            const validationErrors = Object.entries(data.errors)
+              .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+              .join('; ');
+            errorMessage += ` | Validation: ${validationErrors}`;
+          }
+
+          throw new Error(errorMessage);
+        } else if (error.request) {
+          // Request made but no response received
+          throw new Error(`Network error: No response from ${this.client.defaults.baseURL} - Check your internet connection`);
+        } else {
+          // Error in request configuration
+          throw new Error(`Request error: ${error.message}`);
         }
-        throw error;
       }
     );
   }
