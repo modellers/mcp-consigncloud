@@ -14,7 +14,7 @@ export function createTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          limit: { type: 'number', description: 'Number of results to return' },
+          limit: { type: 'number', description: 'Number of results to return (default: 1000) pagination is we need more' },
           cursor: { type: 'string', description: 'Pagination cursor' },
           status: { type: 'string', description: 'Filter by status' },
           category: { type: 'string', description: 'Filter by category ID' },
@@ -101,7 +101,7 @@ export function createTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          limit: { type: 'number', description: 'Number of results' },
+          limit: { type: 'number', description: 'Number of results (default: 1000)' },
           cursor: { type: 'string', description: 'Pagination cursor' },
           status: { type: 'string', description: 'Filter by status (completed, voided, returned)' },
           customer: { type: 'string', description: 'Filter by customer account ID' },
@@ -139,7 +139,7 @@ export function createTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          limit: { type: 'number' },
+          limit: { type: 'number', description: 'Number of results (default: 1000)' },
           cursor: { type: 'string' },
           is_vendor: { type: 'boolean', description: 'Filter by vendor status' },
         },
@@ -208,7 +208,7 @@ export function createTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          limit: { type: 'number' },
+          limit: { type: 'number', description: 'Number of results (default: 1000)' },
           cursor: { type: 'string' },
         },
       },
@@ -230,7 +230,7 @@ export function createTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          limit: { type: 'number' },
+          limit: { type: 'number', description: 'Number of results (default: 1000)' },
           cursor: { type: 'string' },
         },
       },
@@ -292,7 +292,7 @@ export function createTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          limit: { type: 'number' },
+          limit: { type: 'number', description: 'Number of results (default: 1000)' },
           cursor: { type: 'string' },
           status: { type: 'string', enum: ['draft', 'submitted'] },
           account: { type: 'string', description: 'Filter by account ID' },
@@ -352,7 +352,8 @@ export function setupServer(client: ConsignCloudClient): Server {
 
       switch (name) {
         case 'list_items':
-          return { content: [{ type: 'text', text: JSON.stringify(await client.listItems(args as any), null, 2) }] };
+          const itemsParams = { limit: 1000, ...(args as any) };
+          return { content: [{ type: 'text', text: JSON.stringify(await client.listItems(itemsParams), null, 2) }] };
 
         case 'get_item':
           return { content: [{ type: 'text', text: JSON.stringify(await client.getItem((args as any).id), null, 2) }] };
@@ -372,7 +373,8 @@ export function setupServer(client: ConsignCloudClient): Server {
           return { content: [{ type: 'text', text: JSON.stringify(await client.getItemStats(), null, 2) }] };
 
         case 'list_sales':
-          return { content: [{ type: 'text', text: JSON.stringify(await client.listSales(args as any), null, 2) }] };
+          const salesParams = { limit: 1000, ...(args as any) };
+          return { content: [{ type: 'text', text: JSON.stringify(await client.listSales(salesParams), null, 2) }] };
 
         case 'get_sale':
           return { content: [{ type: 'text', text: JSON.stringify(await client.getSale((args as any).id), null, 2) }] };
@@ -381,7 +383,8 @@ export function setupServer(client: ConsignCloudClient): Server {
           return { content: [{ type: 'text', text: JSON.stringify(await client.voidSale((args as any).id), null, 2) }] };
 
         case 'list_accounts':
-          return { content: [{ type: 'text', text: JSON.stringify(await client.listAccounts(args as any), null, 2) }] };
+          const accountsParams = { limit: 1000, ...(args as any) };
+          return { content: [{ type: 'text', text: JSON.stringify(await client.listAccounts(accountsParams), null, 2) }] };
 
         case 'get_account':
           return { content: [{ type: 'text', text: JSON.stringify(await client.getAccount((args as any).id), null, 2) }] };
@@ -397,13 +400,15 @@ export function setupServer(client: ConsignCloudClient): Server {
           return { content: [{ type: 'text', text: JSON.stringify(await client.getAccountStats((args as any).id), null, 2) }] };
 
         case 'list_categories':
-          return { content: [{ type: 'text', text: JSON.stringify(await client.listCategories(args as any), null, 2) }] };
+          const categoriesParams = { limit: 1000, ...(args as any) };
+          return { content: [{ type: 'text', text: JSON.stringify(await client.listCategories(categoriesParams), null, 2) }] };
 
         case 'create_category':
           return { content: [{ type: 'text', text: JSON.stringify(await client.createCategory(args as any), null, 2) }] };
 
         case 'list_locations':
-          return { content: [{ type: 'text', text: JSON.stringify(await client.listLocations(args as any), null, 2) }] };
+          const locationsParams = { limit: 1000, ...(args as any) };
+          return { content: [{ type: 'text', text: JSON.stringify(await client.listLocations(locationsParams), null, 2) }] };
 
         case 'search_suggest':
           const { query, types } = args as any;
@@ -417,7 +422,8 @@ export function setupServer(client: ConsignCloudClient): Server {
           return { content: [{ type: 'text', text: JSON.stringify(await client.getSalesTrends(args as any), null, 2) }] };
 
         case 'list_batches':
-          return { content: [{ type: 'text', text: JSON.stringify(await client.listBatches(args as any), null, 2) }] };
+          const batchesParams = { limit: 1000, ...(args as any) };
+          return { content: [{ type: 'text', text: JSON.stringify(await client.listBatches(batchesParams), null, 2) }] };
 
         case 'create_batch':
           return { content: [{ type: 'text', text: JSON.stringify(await client.createBatch(args as any), null, 2) }] };
