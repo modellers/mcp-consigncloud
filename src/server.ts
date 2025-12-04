@@ -322,6 +322,73 @@ export function createTools(): Tool[] {
         required: ['id', 'status'],
       },
     },
+    {
+      name: 'calculate_inventory_value',
+      description: 'Calculate total inventory value with comprehensive filtering and grouping. Returns total value, item count, average value, and optional breakdown by category, location, account, inventory type, or status.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', description: 'Filter by status (available, sold, processing, removed)' },
+          category: { type: 'string', description: 'Filter by category ID' },
+          account: { type: 'string', description: 'Filter by account ID' },
+          location: { type: 'string', description: 'Filter by location ID' },
+          inventory_type: {
+            type: 'string',
+            enum: ['consignment', 'buy_outright', 'retail'],
+            description: 'Filter by inventory type'
+          },
+          tag_price_gte: { type: 'number', description: 'Filter items with price >= this value (in cents)' },
+          tag_price_lte: { type: 'number', description: 'Filter items with price <= this value (in cents)' },
+          group_by: {
+            type: 'string',
+            enum: ['category', 'location', 'account', 'inventory_type', 'status'],
+            description: 'Group results by field for detailed breakdown'
+          },
+        },
+      },
+    },
+    {
+      name: 'calculate_sales_totals',
+      description: 'Calculate sales totals with filtering by date range, status, location, and customer. Returns total revenue, tax, sale count, average sale value, and optional breakdown by status, location, or date period.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', enum: ['completed', 'voided', 'returned'], description: 'Filter by sale status' },
+          location: { type: 'string', description: 'Filter by location ID' },
+          customer: { type: 'string', description: 'Filter by customer account ID' },
+          created_gte: { type: 'string', description: 'Filter sales created on or after this date (ISO 8601: YYYY-MM-DD)' },
+          created_lte: { type: 'string', description: 'Filter sales created on or before this date (ISO 8601: YYYY-MM-DD)' },
+          group_by: {
+            type: 'string',
+            enum: ['status', 'location', 'date'],
+            description: 'Group results by field for detailed breakdown'
+          },
+          date_interval: {
+            type: 'string',
+            enum: ['day', 'week', 'month'],
+            description: 'When group_by=date, aggregate by this interval (day, week, or month)'
+          },
+        },
+      },
+    },
+    {
+      name: 'calculate_account_metrics',
+      description: 'Calculate comprehensive metrics for a specific vendor/consignor account including current balance, inventory value, items available/sold, total sales revenue, and commission owed.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          account_id: { type: 'string', description: 'Account ID (required)' },
+          created_gte: { type: 'string', description: 'Filter by items/sales created on or after this date (ISO 8601)' },
+          created_lte: { type: 'string', description: 'Filter by items/sales created on or before this date (ISO 8601)' },
+          inventory_type: {
+            type: 'string',
+            enum: ['consignment', 'buy_outright', 'retail'],
+            description: 'Filter by inventory type'
+          },
+        },
+        required: ['account_id'],
+      },
+    },
   ];
 }
 
@@ -352,7 +419,7 @@ export function setupServer(client: ConsignCloudClient): Server {
 
       switch (name) {
         case 'list_items':
-          const itemsParams = { limit: 1000, ...(args as any) };
+          const itemsParams = { limit: 100, ...(args as any) };
           return { content: [{ type: 'text', text: JSON.stringify(await client.listItems(itemsParams), null, 2) }] };
 
         case 'get_item':
@@ -373,7 +440,7 @@ export function setupServer(client: ConsignCloudClient): Server {
           return { content: [{ type: 'text', text: JSON.stringify(await client.getItemStats(), null, 2) }] };
 
         case 'list_sales':
-          const salesParams = { limit: 1000, ...(args as any) };
+          const salesParams = { limit: 100, ...(args as any) };
           return { content: [{ type: 'text', text: JSON.stringify(await client.listSales(salesParams), null, 2) }] };
 
         case 'get_sale':
@@ -383,7 +450,7 @@ export function setupServer(client: ConsignCloudClient): Server {
           return { content: [{ type: 'text', text: JSON.stringify(await client.voidSale((args as any).id), null, 2) }] };
 
         case 'list_accounts':
-          const accountsParams = { limit: 1000, ...(args as any) };
+          const accountsParams = { limit: 100, ...(args as any) };
           return { content: [{ type: 'text', text: JSON.stringify(await client.listAccounts(accountsParams), null, 2) }] };
 
         case 'get_account':
@@ -400,14 +467,14 @@ export function setupServer(client: ConsignCloudClient): Server {
           return { content: [{ type: 'text', text: JSON.stringify(await client.getAccountStats((args as any).id), null, 2) }] };
 
         case 'list_categories':
-          const categoriesParams = { limit: 1000, ...(args as any) };
+          const categoriesParams = { limit: 100, ...(args as any) };
           return { content: [{ type: 'text', text: JSON.stringify(await client.listCategories(categoriesParams), null, 2) }] };
 
         case 'create_category':
           return { content: [{ type: 'text', text: JSON.stringify(await client.createCategory(args as any), null, 2) }] };
 
         case 'list_locations':
-          const locationsParams = { limit: 1000, ...(args as any) };
+          const locationsParams = { limit: 100, ...(args as any) };
           return { content: [{ type: 'text', text: JSON.stringify(await client.listLocations(locationsParams), null, 2) }] };
 
         case 'search_suggest':
@@ -422,7 +489,7 @@ export function setupServer(client: ConsignCloudClient): Server {
           return { content: [{ type: 'text', text: JSON.stringify(await client.getSalesTrends(args as any), null, 2) }] };
 
         case 'list_batches':
-          const batchesParams = { limit: 1000, ...(args as any) };
+          const batchesParams = { limit: 100, ...(args as any) };
           return { content: [{ type: 'text', text: JSON.stringify(await client.listBatches(batchesParams), null, 2) }] };
 
         case 'create_batch':
@@ -431,6 +498,15 @@ export function setupServer(client: ConsignCloudClient): Server {
         case 'update_batch_status':
           const { id: batchId, status } = args as any;
           return { content: [{ type: 'text', text: JSON.stringify(await client.updateBatchStatus(batchId, status), null, 2) }] };
+
+        case 'calculate_inventory_value':
+          return { content: [{ type: 'text', text: JSON.stringify(await client.calculateInventoryValue(args as any), null, 2) }] };
+
+        case 'calculate_sales_totals':
+          return { content: [{ type: 'text', text: JSON.stringify(await client.calculateSalesTotals(args as any), null, 2) }] };
+
+        case 'calculate_account_metrics':
+          return { content: [{ type: 'text', text: JSON.stringify(await client.calculateAccountMetrics(args as any), null, 2) }] };
 
         default:
           throw new Error(`Unknown tool: ${name}`);

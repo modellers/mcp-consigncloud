@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
-import { Item, Sale, Account, Batch, ItemCategory, Location, PaginatedResponse } from './types.js';
+import { Item, Sale, Account, Batch, ItemCategory, Location, PaginatedResponse, InventoryValueResult, SalesTotalsResult, AccountMetricsResult } from './types.js';
 
 export class ConsignCloudClient {
   private client: AxiosInstance;
@@ -281,5 +281,302 @@ export class ConsignCloudClient {
   async listBalanceEntries(params?: Record<string, any>): Promise<any> {
     const response = await this.client.get('/balance-entries', { params });
     return response.data;
+  }
+
+  // Aggregation Methods
+
+  /**
+   * Fetch all items with pagination and calculate inventory value
+   */
+  async calculateInventoryValue(params?: {
+    status?: string;
+    category?: string;
+    account?: string;
+    location?: string;
+    inventory_type?: string;
+    tag_price_gte?: number;
+    tag_price_lte?: number;
+    group_by?: 'category' | 'location' | 'account' | 'inventory_type' | 'status';
+  }): Promise<InventoryValueResult> {
+    const { group_by, ...filterParams } = params || {};
+    const filters: string[] = [];
+
+    // Track applied filters
+    if (filterParams.status) filters.push(`status=${filterParams.status}`);
+    if (filterParams.category) filters.push(`category=${filterParams.category}`);
+    if (filterParams.account) filters.push(`account=${filterParams.account}`);
+    if (filterParams.location) filters.push(`location=${filterParams.location}`);
+    if (filterParams.inventory_type) filters.push(`inventory_type=${filterParams.inventory_type}`);
+    if (filterParams.tag_price_gte) filters.push(`tag_price>=${filterParams.tag_price_gte}`);
+    if (filterParams.tag_price_lte) filters.push(`tag_price<=${filterParams.tag_price_lte}`);
+
+    let allItems: Item[] = [];
+    let cursor: string | null = null;
+
+    // Build query params with only defined values
+    const queryParams: Record<string, any> = { limit: 100 };
+    if (filterParams.status) queryParams.status = filterParams.status;
+    if (filterParams.category) queryParams.category = filterParams.category;
+    if (filterParams.account) queryParams.account = filterParams.account;
+    if (filterParams.location) queryParams.location = filterParams.location;
+    if (filterParams.inventory_type) queryParams.inventory_type = filterParams.inventory_type;
+    if (filterParams.tag_price_gte !== undefined) queryParams.tag_price_gte = filterParams.tag_price_gte;
+    if (filterParams.tag_price_lte !== undefined) queryParams.tag_price_lte = filterParams.tag_price_lte;
+
+    // Fetch all pages
+    do {
+      if (cursor) queryParams.cursor = cursor;
+      const response = await this.listItems(queryParams);
+      allItems = allItems.concat(response.data);
+      cursor = response.next_cursor;
+    } while (cursor);
+
+    // Calculate totals
+    let totalValue = 0;
+    let totalItems = 0;
+    const breakdown: Record<string, { value: number; count: number }> = {};
+
+    for (const item of allItems) {
+      // Items don't have a simple quantity field - use 1 as default or count from status
+      const quantity = item.quantity || 1;
+      const itemValue = item.tag_price * quantity;
+      totalValue += itemValue;
+      totalItems += quantity;
+
+      // Group by if specified
+      if (group_by) {
+        let groupKey: string;
+        switch (group_by) {
+          case 'category':
+            groupKey = item.category || 'uncategorized';
+            break;
+          case 'location':
+            groupKey = item.location || 'no_location';
+            break;
+          case 'account':
+            groupKey = item.account || 'no_account';
+            break;
+          case 'inventory_type':
+            groupKey = item.inventory_type;
+            break;
+          case 'status':
+            groupKey = item.status;
+            break;
+          default:
+            groupKey = 'all';
+        }
+
+        if (!breakdown[groupKey]) {
+          breakdown[groupKey] = { value: 0, count: 0 };
+        }
+        breakdown[groupKey].value += itemValue;
+        breakdown[groupKey].count += quantity;
+      }
+    }
+
+    return {
+      total_value: totalValue,
+      total_items: totalItems,
+      average_value: totalItems > 0 ? Math.round(totalValue / totalItems) : 0,
+      breakdown: group_by ? breakdown : undefined,
+      filters_applied: filters,
+    };
+  }
+
+  /**
+   * Fetch all sales with pagination and calculate totals
+   */
+  async calculateSalesTotals(params?: {
+    status?: string;
+    location?: string;
+    customer?: string;
+    created_gte?: string;
+    created_lte?: string;
+    group_by?: 'status' | 'location' | 'date';
+    date_interval?: 'day' | 'week' | 'month';
+  }): Promise<SalesTotalsResult> {
+    const { group_by, date_interval, ...filterParams } = params || {};
+    const filters: string[] = [];
+
+    // Track applied filters
+    if (filterParams.status) filters.push(`status=${filterParams.status}`);
+    if (filterParams.location) filters.push(`location=${filterParams.location}`);
+    if (filterParams.customer) filters.push(`customer=${filterParams.customer}`);
+    if (filterParams.created_gte) filters.push(`created>=${filterParams.created_gte}`);
+    if (filterParams.created_lte) filters.push(`created<=${filterParams.created_lte}`);
+
+    let allSales: Sale[] = [];
+    let cursor: string | null = null;
+
+    // Build query params with only defined values
+    const queryParams: Record<string, any> = { limit: 100 };
+    if (filterParams.status) queryParams.status = filterParams.status;
+    if (filterParams.location) queryParams.location = filterParams.location;
+    if (filterParams.customer) queryParams.customer = filterParams.customer;
+    if (filterParams.created_gte) queryParams.created_gte = filterParams.created_gte;
+    if (filterParams.created_lte) queryParams.created_lte = filterParams.created_lte;
+
+    // Fetch all pages
+    do {
+      if (cursor) queryParams.cursor = cursor;
+      const response = await this.listSales(queryParams);
+      allSales = allSales.concat(response.data);
+      cursor = response.next_cursor;
+    } while (cursor);
+
+    // Calculate totals
+    let totalRevenue = 0;
+    let totalTax = 0;
+    let totalSales = 0;
+    const breakdown: Record<string, { revenue: number; tax: number; count: number }> = {};
+
+    for (const sale of allSales) {
+      totalRevenue += sale.total || 0;
+      totalTax += sale.tax || 0;
+      totalSales += 1;
+
+      // Group by if specified
+      if (group_by) {
+        let groupKey: string;
+        switch (group_by) {
+          case 'status':
+            groupKey = sale.status;
+            break;
+          case 'location':
+            groupKey = sale.location || 'no_location';
+            break;
+          case 'date':
+            if (date_interval) {
+              const date = new Date(sale.created);
+              if (date_interval === 'day') {
+                groupKey = date.toISOString().split('T')[0];
+              } else if (date_interval === 'week') {
+                const weekStart = new Date(date);
+                weekStart.setDate(date.getDate() - date.getDay());
+                groupKey = weekStart.toISOString().split('T')[0];
+              } else if (date_interval === 'month') {
+                groupKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+              } else {
+                groupKey = date.toISOString().split('T')[0];
+              }
+            } else {
+              groupKey = sale.created.split('T')[0];
+            }
+            break;
+          default:
+            groupKey = 'all';
+        }
+
+        if (!breakdown[groupKey]) {
+          breakdown[groupKey] = { revenue: 0, tax: 0, count: 0 };
+        }
+        breakdown[groupKey].revenue += sale.total || 0;
+        breakdown[groupKey].tax += sale.tax || 0;
+        breakdown[groupKey].count += 1;
+      }
+    }
+
+    return {
+      total_revenue: totalRevenue,
+      total_tax: totalTax,
+      total_sales: totalSales,
+      average_sale: totalSales > 0 ? Math.round(totalRevenue / totalSales) : 0,
+      breakdown: group_by ? breakdown : undefined,
+      filters_applied: filters,
+    };
+  }
+
+  /**
+   * Calculate metrics for a specific account
+   */
+  async calculateAccountMetrics(params: {
+    account_id: string;
+    created_gte?: string;
+    created_lte?: string;
+    inventory_type?: string;
+  }): Promise<AccountMetricsResult> {
+    const { account_id, created_gte, created_lte, inventory_type } = params;
+    const filters: string[] = [`account_id=${account_id}`];
+
+    if (created_gte) filters.push(`created>=${created_gte}`);
+    if (created_lte) filters.push(`created<=${created_lte}`);
+    if (inventory_type) filters.push(`inventory_type=${inventory_type}`);
+
+    // Fetch account details
+    const account = await this.getAccount(account_id);
+
+    // Fetch all items for this account
+    let allItems: Item[] = [];
+    let cursor: string | null = null;
+    const itemQueryParams: Record<string, any> = { limit: 100, account: account_id };
+    if (inventory_type) itemQueryParams.inventory_type = inventory_type;
+
+    do {
+      if (cursor) itemQueryParams.cursor = cursor;
+      const response = await this.listItems(itemQueryParams);
+      allItems = allItems.concat(response.data);
+      cursor = response.next_cursor;
+    } while (cursor);
+
+    // Calculate inventory metrics
+    let inventoryValue = 0;
+    let itemsAvailable = 0;
+    let itemsSold = 0;
+
+    for (const item of allItems) {
+      const quantity = item.quantity || 1;
+      if (item.status === 'sold') {
+        itemsSold += quantity;
+      } else if (item.status === 'available') {
+        inventoryValue += item.tag_price * quantity;
+        itemsAvailable += quantity;
+      }
+    }
+
+    // Fetch sales for this account (items sold by this consignor)
+    let totalSalesRevenue = 0;
+    let commissionOwed = 0;
+
+    // Fetch all sales
+    let allSales: Sale[] = [];
+    cursor = null;
+    const salesQueryParams: Record<string, any> = { limit: 100 };
+    if (created_gte) salesQueryParams.created_gte = created_gte;
+    if (created_lte) salesQueryParams.created_lte = created_lte;
+
+    do {
+      if (cursor) salesQueryParams.cursor = cursor;
+      const response = await this.listSales(salesQueryParams);
+      allSales = allSales.concat(response.data);
+      cursor = response.next_cursor;
+    } while (cursor);
+
+    // Calculate sales revenue for items from this account
+    for (const sale of allSales) {
+      if (sale.status === 'completed' && sale.items) {
+        for (const saleItem of sale.items) {
+          // Check if this sale item belongs to our account
+          const matchingItem = allItems.find(i => i.id === saleItem.item);
+          if (matchingItem) {
+            const itemRevenue = saleItem.price || 0;
+            totalSalesRevenue += itemRevenue;
+            // Calculate commission based on split
+            commissionOwed += Math.round(itemRevenue * matchingItem.split);
+          }
+        }
+      }
+    }
+
+    return {
+      account_id: account.id,
+      account_name: [account.first_name, account.last_name].filter(Boolean).join(' ') || account.company || account.number,
+      current_balance: account.balance,
+      inventory_value: inventoryValue,
+      items_available: itemsAvailable,
+      items_sold: itemsSold,
+      total_sales_revenue: totalSalesRevenue,
+      commission_owed: commissionOwed,
+      filters_applied: filters,
+    };
   }
 }

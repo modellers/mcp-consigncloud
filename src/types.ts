@@ -83,3 +83,44 @@ export interface ApiError {
   code: string;
   details?: any[];
 }
+
+// Calculation Result Types
+export interface InventoryValueResult {
+  total_value: number; // in cents
+  total_items: number;
+  average_value: number; // in cents
+  breakdown?: {
+    [key: string]: {
+      value: number;
+      count: number;
+    };
+  };
+  filters_applied: string[];
+}
+
+export interface SalesTotalsResult {
+  total_revenue: number; // in cents
+  total_tax: number; // in cents
+  total_sales: number; // count
+  average_sale: number; // in cents
+  breakdown?: {
+    [key: string]: {
+      revenue: number;
+      tax: number;
+      count: number;
+    };
+  };
+  filters_applied: string[];
+}
+
+export interface AccountMetricsResult {
+  account_id: string;
+  account_name: string;
+  current_balance: number; // in cents
+  inventory_value: number; // in cents (available items)
+  items_available: number;
+  items_sold: number;
+  total_sales_revenue: number; // in cents
+  commission_owed: number; // in cents (calculated from splits)
+  filters_applied: string[];
+}
