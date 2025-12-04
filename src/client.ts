@@ -296,6 +296,9 @@ export class ConsignCloudClient {
     inventory_type?: string;
     tag_price_gte?: number;
     tag_price_lte?: number;
+    created_gte?: string;
+    created_lte?: string;
+    batch?: string;
     group_by?: 'category' | 'location' | 'account' | 'inventory_type' | 'status';
   }): Promise<InventoryValueResult> {
     const { group_by, ...filterParams } = params || {};
@@ -309,6 +312,9 @@ export class ConsignCloudClient {
     if (filterParams.inventory_type) filters.push(`inventory_type=${filterParams.inventory_type}`);
     if (filterParams.tag_price_gte) filters.push(`tag_price>=${filterParams.tag_price_gte}`);
     if (filterParams.tag_price_lte) filters.push(`tag_price<=${filterParams.tag_price_lte}`);
+    if (filterParams.created_gte) filters.push(`created>=${filterParams.created_gte}`);
+    if (filterParams.created_lte) filters.push(`created<=${filterParams.created_lte}`);
+    if (filterParams.batch) filters.push(`batch=${filterParams.batch}`);
 
     let allItems: Item[] = [];
     let cursor: string | null = null;
@@ -322,6 +328,9 @@ export class ConsignCloudClient {
     if (filterParams.inventory_type) queryParams.inventory_type = filterParams.inventory_type;
     if (filterParams.tag_price_gte !== undefined) queryParams.tag_price_gte = filterParams.tag_price_gte;
     if (filterParams.tag_price_lte !== undefined) queryParams.tag_price_lte = filterParams.tag_price_lte;
+    if (filterParams.created_gte) queryParams.created_gte = filterParams.created_gte;
+    if (filterParams.created_lte) queryParams.created_lte = filterParams.created_lte;
+    if (filterParams.batch) queryParams.batch = filterParams.batch;
 
     // Fetch all pages
     do {
@@ -392,6 +401,9 @@ export class ConsignCloudClient {
     customer?: string;
     created_gte?: string;
     created_lte?: string;
+    payment_type?: string;
+    total_gte?: number;
+    total_lte?: number;
     group_by?: 'status' | 'location' | 'date';
     date_interval?: 'day' | 'week' | 'month';
   }): Promise<SalesTotalsResult> {
@@ -404,6 +416,9 @@ export class ConsignCloudClient {
     if (filterParams.customer) filters.push(`customer=${filterParams.customer}`);
     if (filterParams.created_gte) filters.push(`created>=${filterParams.created_gte}`);
     if (filterParams.created_lte) filters.push(`created<=${filterParams.created_lte}`);
+    if (filterParams.payment_type) filters.push(`payment_type=${filterParams.payment_type}`);
+    if (filterParams.total_gte !== undefined) filters.push(`total>=${filterParams.total_gte}`);
+    if (filterParams.total_lte !== undefined) filters.push(`total<=${filterParams.total_lte}`);
 
     let allSales: Sale[] = [];
     let cursor: string | null = null;
@@ -415,6 +430,9 @@ export class ConsignCloudClient {
     if (filterParams.customer) queryParams.customer = filterParams.customer;
     if (filterParams.created_gte) queryParams.created_gte = filterParams.created_gte;
     if (filterParams.created_lte) queryParams.created_lte = filterParams.created_lte;
+    if (filterParams.payment_type) queryParams.payment_type = filterParams.payment_type;
+    if (filterParams.total_gte !== undefined) queryParams.total_gte = filterParams.total_gte;
+    if (filterParams.total_lte !== undefined) queryParams.total_lte = filterParams.total_lte;
 
     // Fetch all pages
     do {

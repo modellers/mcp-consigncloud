@@ -339,6 +339,9 @@ export function createTools(): Tool[] {
           },
           tag_price_gte: { type: 'number', description: 'Filter items with price >= this value (in cents)' },
           tag_price_lte: { type: 'number', description: 'Filter items with price <= this value (in cents)' },
+          created_gte: { type: 'string', description: 'Filter items created on or after this date (ISO 8601: YYYY-MM-DD)' },
+          created_lte: { type: 'string', description: 'Filter items created on or before this date (ISO 8601: YYYY-MM-DD)' },
+          batch: { type: 'string', description: 'Filter by batch ID' },
           group_by: {
             type: 'string',
             enum: ['category', 'location', 'account', 'inventory_type', 'status'],
@@ -349,7 +352,7 @@ export function createTools(): Tool[] {
     },
     {
       name: 'calculate_sales_totals',
-      description: 'Calculate sales totals with filtering by date range, status, location, and customer. Returns total revenue, tax, sale count, average sale value, and optional breakdown by status, location, or date period.',
+      description: 'Calculate sales totals with filtering by date range, status, location, customer, payment type, and amount. Returns total revenue, tax, sale count, average sale value, and optional breakdown by status, location, or date period.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -358,6 +361,9 @@ export function createTools(): Tool[] {
           customer: { type: 'string', description: 'Filter by customer account ID' },
           created_gte: { type: 'string', description: 'Filter sales created on or after this date (ISO 8601: YYYY-MM-DD)' },
           created_lte: { type: 'string', description: 'Filter sales created on or before this date (ISO 8601: YYYY-MM-DD)' },
+          payment_type: { type: 'string', description: 'Filter by payment type (cash, card, etc.)' },
+          total_gte: { type: 'number', description: 'Filter sales with total >= this value (in cents)' },
+          total_lte: { type: 'number', description: 'Filter sales with total <= this value (in cents)' },
           group_by: {
             type: 'string',
             enum: ['status', 'location', 'date'],
