@@ -426,7 +426,7 @@ export function setupServer(client: ConsignCloudClient): Server {
 
       switch (name) {
         case 'list_items':
-          const itemsParams = { limit: 100, ...(args as any) };
+          const itemsParams = { limit: 1000, ...(args as any) };
           return { content: [{ type: 'text', text: JSON.stringify(await client.listItems(itemsParams), null, 2) }] };
 
         case 'get_item':
@@ -447,7 +447,7 @@ export function setupServer(client: ConsignCloudClient): Server {
           return { content: [{ type: 'text', text: JSON.stringify(await client.getItemStats(), null, 2) }] };
 
         case 'list_sales':
-          const salesParams = { limit: 100, ...(args as any) };
+          const salesParams = { limit: 1000, ...(args as any) };
           return { content: [{ type: 'text', text: JSON.stringify(await client.listSales(salesParams), null, 2) }] };
 
         case 'get_sale':
@@ -457,7 +457,7 @@ export function setupServer(client: ConsignCloudClient): Server {
           return { content: [{ type: 'text', text: JSON.stringify(await client.voidSale((args as any).id), null, 2) }] };
 
         case 'list_accounts':
-          const accountsParams = { limit: 100, ...(args as any) };
+          const accountsParams = { limit: 1000, ...(args as any) };
           return { content: [{ type: 'text', text: JSON.stringify(await client.listAccounts(accountsParams), null, 2) }] };
 
         case 'get_account':
@@ -474,14 +474,14 @@ export function setupServer(client: ConsignCloudClient): Server {
           return { content: [{ type: 'text', text: JSON.stringify(await client.getAccountStats((args as any).id), null, 2) }] };
 
         case 'list_categories':
-          const categoriesParams = { limit: 100, ...(args as any) };
+          const categoriesParams = { limit: 1000, ...(args as any) };
           return { content: [{ type: 'text', text: JSON.stringify(await client.listCategories(categoriesParams), null, 2) }] };
 
         case 'create_category':
           return { content: [{ type: 'text', text: JSON.stringify(await client.createCategory(args as any), null, 2) }] };
 
         case 'list_locations':
-          const locationsParams = { limit: 100, ...(args as any) };
+          const locationsParams = { limit: 1000, ...(args as any) };
           return { content: [{ type: 'text', text: JSON.stringify(await client.listLocations(locationsParams), null, 2) }] };
 
         case 'search_suggest':
@@ -496,7 +496,7 @@ export function setupServer(client: ConsignCloudClient): Server {
           return { content: [{ type: 'text', text: JSON.stringify(await client.getSalesTrends(args as any), null, 2) }] };
 
         case 'list_batches':
-          const batchesParams = { limit: 100, ...(args as any) };
+          const batchesParams = { limit: 1000, ...(args as any) };
           return { content: [{ type: 'text', text: JSON.stringify(await client.listBatches(batchesParams), null, 2) }] };
 
         case 'create_batch':
