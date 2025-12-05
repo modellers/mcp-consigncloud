@@ -5,6 +5,8 @@ import cors from 'cors';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import dotenv from 'dotenv';
 import { ConsignCloudClient } from './client.js';
+import { CachingClient } from './cache-wrapper.js';
+import { CacheManager } from './cache.js';
 import { setupServer } from './server.js';
 
 // Load environment variables
@@ -36,6 +38,8 @@ const API_KEY = cliArgs['api-key'] || process.env.CONSIGNCLOUD_API_KEY;
 const API_BASE_URL = cliArgs['api-url'] || process.env.CONSIGNCLOUD_API_BASE_URL || 'https://api.consigncloud.com/api/v1';
 const PORT = parseInt(cliArgs['port'] || process.env.PORT || '3000');
 const HOST = cliArgs['host'] || process.env.HOST || 'localhost';
+const CACHE_ENABLED = process.env.CACHE_ENABLED !== 'false'; // Default: true
+const CACHE_WARNING_THRESHOLD = parseInt(process.env.CACHE_WARNING_THRESHOLD || '10000');
 
 if (!API_KEY) {
   console.error('❌ Error: CONSIGNCLOUD_API_KEY is required');
@@ -51,9 +55,27 @@ console.log('📋 Configuration:');
 console.log(`   API URL: ${API_BASE_URL}`);
 console.log(`   API Key: ${API_KEY.substring(0, 8)}...${API_KEY.substring(API_KEY.length - 4)}`);
 console.log(`   Server: http://${HOST}:${PORT}`);
+console.log(`   Cache: ${CACHE_ENABLED ? 'enabled' : 'disabled'}, threshold: ${CACHE_WARNING_THRESHOLD}`);
 
 // Initialize ConsignCloud client
-const client = new ConsignCloudClient(API_KEY, API_BASE_URL);
+const baseClient = new ConsignCloudClient(API_KEY, API_BASE_URL);
+
+// Initialize cache manager
+const cacheConfig = {
+  enabled: CACHE_ENABLED,
+  warningThreshold: CACHE_WARNING_THRESHOLD,
+  ttl: {
+    categories: parseInt(process.env.CACHE_TTL_CATEGORIES || String(24 * 60 * 60)),
+    locations: parseInt(process.env.CACHE_TTL_LOCATIONS || String(24 * 60 * 60)),
+    accounts: parseInt(process.env.CACHE_TTL_ACCOUNTS || String(4 * 60 * 60)),
+    items: parseInt(process.env.CACHE_TTL_ITEMS || String(2 * 60 * 60)),
+    sales: parseInt(process.env.CACHE_TTL_SALES || String(1 * 60 * 60)),
+    batches: parseInt(process.env.CACHE_TTL_BATCHES || String(2 * 60 * 60)),
+  },
+};
+
+const cacheManager = new CacheManager(cacheConfig);
+const client = new CachingClient(baseClient, cacheManager);
 
 // Create Express app
 const app = express();

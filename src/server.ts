@@ -4,7 +4,7 @@ import {
   ListToolsRequestSchema,
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
-import { ConsignCloudClient } from './client.js';
+import { CachingClient } from './cache-wrapper.js';
 
 export function createTools(): Tool[] {
   return [
@@ -402,10 +402,24 @@ export function createTools(): Tool[] {
         required: ['account_id'],
       },
     },
+    {
+      name: 'refresh_data',
+      description: 'Refresh cached data when external changes were made or data appears stale. Use this when: user added/updated data outside this session, user says they don\'t see recent changes, or data seems out of sync. If no type specified, refreshes all data types.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          type: {
+            type: 'string',
+            enum: ['items', 'sales', 'accounts', 'categories', 'locations', 'batches'],
+            description: 'Optional: specific data type to refresh (items, sales, accounts, etc.). If omitted, refreshes all data types.',
+          },
+        },
+      },
+    },
   ];
 }
 
-export function setupServer(client: ConsignCloudClient): Server {
+export function setupServer(client: CachingClient): Server {
   const server = new Server(
     {
       name: 'consigncloud-mcp-server',
@@ -432,47 +446,35 @@ export function setupServer(client: ConsignCloudClient): Server {
 
       switch (name) {
         case 'list_items': {
-          const { date_from, date_to, cursor, limit, ...apiParams } = args as any;
+          const { date_from, date_to, limit, ...apiParams } = args as any;
 
-          // If no date filtering, just pass through to API
-          if (!date_from && !date_to) {
-            const itemsParams = { limit: limit || 100, cursor, ...apiParams };
-            return { content: [{ type: 'text', text: JSON.stringify(await client.listItems(itemsParams), null, 2) }] };
+          // Fetch from cache (wrapper handles pagination)
+          let items = await client.listItems(apiParams);
+
+          // Apply client-side date filtering if needed
+          const filtersApplied: string[] = [];
+          if (date_from || date_to) {
+            items = items.filter(item => {
+              if (!item.created) return false;
+              const itemDate = new Date(item.created);
+              if (date_from && itemDate < new Date(date_from)) return false;
+              if (date_to && itemDate > new Date(date_to)) return false;
+              return true;
+            });
+            if (date_from) filtersApplied.push(`date_from=${date_from}`);
+            if (date_to) filtersApplied.push(`date_to=${date_to}`);
           }
 
-          // Client-side date filtering required
-          let allItems: any[] = [];
-          let nextCursor: string | null = cursor || null;
-          const queryParams: any = { limit: 100, ...apiParams };
-
-          // Fetch all pages
-          do {
-            if (nextCursor) queryParams.cursor = nextCursor;
-            const response = await client.listItems(queryParams);
-            allItems = allItems.concat(response.data);
-            nextCursor = response.next_cursor;
-          } while (nextCursor);
-
-          // Apply client-side date filtering
-          const filteredItems = allItems.filter(item => {
-            if (!item.created) return false;
-            const itemDate = new Date(item.created);
-            if (date_from && itemDate < new Date(date_from)) return false;
-            if (date_to && itemDate > new Date(date_to)) return false;
-            return true;
-          });
-
           // Apply limit if specified
-          const limitedItems = limit ? filteredItems.slice(0, limit) : filteredItems;
+          const limitedItems = limit ? items.slice(0, limit) : items;
 
           return {
             content: [{
               type: 'text',
               text: JSON.stringify({
                 data: limitedItems,
-                next_cursor: null,
-                client_filtered: true,
-                total_matched: filteredItems.length
+                total_count: limitedItems.length,
+                ...(filtersApplied.length > 0 && { client_filtered: true, filters_applied: filtersApplied }),
               }, null, 2)
             }]
           };
@@ -496,47 +498,35 @@ export function setupServer(client: ConsignCloudClient): Server {
           return { content: [{ type: 'text', text: JSON.stringify(await client.getItemStats(), null, 2) }] };
 
         case 'list_sales': {
-          const { date_from, date_to, cursor, limit, ...apiParams } = args as any;
+          const { date_from, date_to, limit, ...apiParams } = args as any;
 
-          // If no date filtering, just pass through to API
-          if (!date_from && !date_to) {
-            const salesParams = { limit: limit || 100, cursor, ...apiParams };
-            return { content: [{ type: 'text', text: JSON.stringify(await client.listSales(salesParams), null, 2) }] };
+          // Fetch from cache (wrapper handles pagination)
+          let sales = await client.listSales(apiParams);
+
+          // Apply client-side date filtering if needed
+          const filtersApplied: string[] = [];
+          if (date_from || date_to) {
+            sales = sales.filter(sale => {
+              if (!sale.created) return false;
+              const saleDate = new Date(sale.created);
+              if (date_from && saleDate < new Date(date_from)) return false;
+              if (date_to && saleDate > new Date(date_to)) return false;
+              return true;
+            });
+            if (date_from) filtersApplied.push(`date_from=${date_from}`);
+            if (date_to) filtersApplied.push(`date_to=${date_to}`);
           }
 
-          // Client-side date filtering required
-          let allSales: any[] = [];
-          let nextCursor: string | null = cursor || null;
-          const queryParams: any = { limit: 100, ...apiParams };
-
-          // Fetch all pages
-          do {
-            if (nextCursor) queryParams.cursor = nextCursor;
-            const response = await client.listSales(queryParams);
-            allSales = allSales.concat(response.data);
-            nextCursor = response.next_cursor;
-          } while (nextCursor);
-
-          // Apply client-side date filtering
-          const filteredSales = allSales.filter(sale => {
-            if (!sale.created) return false;
-            const saleDate = new Date(sale.created);
-            if (date_from && saleDate < new Date(date_from)) return false;
-            if (date_to && saleDate > new Date(date_to)) return false;
-            return true;
-          });
-
           // Apply limit if specified
-          const limitedSales = limit ? filteredSales.slice(0, limit) : filteredSales;
+          const limitedSales = limit ? sales.slice(0, limit) : sales;
 
           return {
             content: [{
               type: 'text',
               text: JSON.stringify({
                 data: limitedSales,
-                next_cursor: null,
-                client_filtered: true,
-                total_matched: filteredSales.length
+                total_count: limitedSales.length,
+                ...(filtersApplied.length > 0 && { client_filtered: true, filters_applied: filtersApplied }),
               }, null, 2)
             }]
           };
@@ -549,47 +539,35 @@ export function setupServer(client: ConsignCloudClient): Server {
           return { content: [{ type: 'text', text: JSON.stringify(await client.voidSale((args as any).id), null, 2) }] };
 
         case 'list_accounts': {
-          const { date_from, date_to, cursor, limit, ...apiParams } = args as any;
+          const { date_from, date_to, limit, ...apiParams } = args as any;
 
-          // If no date filtering, just pass through to API
-          if (!date_from && !date_to) {
-            const accountsParams = { limit: limit || 100, cursor, ...apiParams };
-            return { content: [{ type: 'text', text: JSON.stringify(await client.listAccounts(accountsParams), null, 2) }] };
+          // Fetch from cache (wrapper handles pagination)
+          let accounts = await client.listAccounts(apiParams);
+
+          // Apply client-side date filtering if needed
+          const filtersApplied: string[] = [];
+          if (date_from || date_to) {
+            accounts = accounts.filter(account => {
+              if (!account.created) return false;
+              const accountDate = new Date(account.created);
+              if (date_from && accountDate < new Date(date_from)) return false;
+              if (date_to && accountDate > new Date(date_to)) return false;
+              return true;
+            });
+            if (date_from) filtersApplied.push(`date_from=${date_from}`);
+            if (date_to) filtersApplied.push(`date_to=${date_to}`);
           }
 
-          // Client-side date filtering required
-          let allAccounts: any[] = [];
-          let nextCursor: string | null = cursor || null;
-          const queryParams: any = { limit: 100, ...apiParams };
-
-          // Fetch all pages
-          do {
-            if (nextCursor) queryParams.cursor = nextCursor;
-            const response = await client.listAccounts(queryParams);
-            allAccounts = allAccounts.concat(response.data);
-            nextCursor = response.next_cursor;
-          } while (nextCursor);
-
-          // Apply client-side date filtering
-          const filteredAccounts = allAccounts.filter(account => {
-            if (!account.created) return false;
-            const accountDate = new Date(account.created);
-            if (date_from && accountDate < new Date(date_from)) return false;
-            if (date_to && accountDate > new Date(date_to)) return false;
-            return true;
-          });
-
           // Apply limit if specified
-          const limitedAccounts = limit ? filteredAccounts.slice(0, limit) : filteredAccounts;
+          const limitedAccounts = limit ? accounts.slice(0, limit) : accounts;
 
           return {
             content: [{
               type: 'text',
               text: JSON.stringify({
                 data: limitedAccounts,
-                next_cursor: null,
-                client_filtered: true,
-                total_matched: filteredAccounts.length
+                total_count: limitedAccounts.length,
+                ...(filtersApplied.length > 0 && { client_filtered: true, filters_applied: filtersApplied }),
               }, null, 2)
             }]
           };
@@ -608,16 +586,18 @@ export function setupServer(client: ConsignCloudClient): Server {
         case 'get_account_stats':
           return { content: [{ type: 'text', text: JSON.stringify(await client.getAccountStats((args as any).id), null, 2) }] };
 
-        case 'list_categories':
-          const categoriesParams = { limit: 100, ...(args as any) };
-          return { content: [{ type: 'text', text: JSON.stringify(await client.listCategories(categoriesParams), null, 2) }] };
+        case 'list_categories': {
+          const categories = await client.listCategories(args as any);
+          return { content: [{ type: 'text', text: JSON.stringify({ data: categories, total_count: categories.length }, null, 2) }] };
+        }
 
         case 'create_category':
           return { content: [{ type: 'text', text: JSON.stringify(await client.createCategory(args as any), null, 2) }] };
 
-        case 'list_locations':
-          const locationsParams = { limit: 100, ...(args as any) };
-          return { content: [{ type: 'text', text: JSON.stringify(await client.listLocations(locationsParams), null, 2) }] };
+        case 'list_locations': {
+          const locations = await client.listLocations(args as any);
+          return { content: [{ type: 'text', text: JSON.stringify({ data: locations, total_count: locations.length }, null, 2) }] };
+        }
 
         case 'search_suggest':
           const { query, types } = args as any;
@@ -631,47 +611,35 @@ export function setupServer(client: ConsignCloudClient): Server {
           return { content: [{ type: 'text', text: JSON.stringify(await client.getSalesTrends(args as any), null, 2) }] };
 
         case 'list_batches': {
-          const { date_from, date_to, cursor, limit, ...apiParams } = args as any;
+          const { date_from, date_to, limit, ...apiParams } = args as any;
 
-          // If no date filtering, just pass through to API
-          if (!date_from && !date_to) {
-            const batchesParams = { limit: limit || 100, cursor, ...apiParams };
-            return { content: [{ type: 'text', text: JSON.stringify(await client.listBatches(batchesParams), null, 2) }] };
+          // Fetch from cache (wrapper handles pagination)
+          let batches = await client.listBatches(apiParams);
+
+          // Apply client-side date filtering if needed
+          const filtersApplied: string[] = [];
+          if (date_from || date_to) {
+            batches = batches.filter(batch => {
+              if (!batch.created) return false;
+              const batchDate = new Date(batch.created);
+              if (date_from && batchDate < new Date(date_from)) return false;
+              if (date_to && batchDate > new Date(date_to)) return false;
+              return true;
+            });
+            if (date_from) filtersApplied.push(`date_from=${date_from}`);
+            if (date_to) filtersApplied.push(`date_to=${date_to}`);
           }
 
-          // Client-side date filtering required
-          let allBatches: any[] = [];
-          let nextCursor: string | null = cursor || null;
-          const queryParams: any = { limit: 100, ...apiParams };
-
-          // Fetch all pages
-          do {
-            if (nextCursor) queryParams.cursor = nextCursor;
-            const response = await client.listBatches(queryParams);
-            allBatches = allBatches.concat(response.data);
-            nextCursor = response.next_cursor;
-          } while (nextCursor);
-
-          // Apply client-side date filtering
-          const filteredBatches = allBatches.filter(batch => {
-            if (!batch.created) return false;
-            const batchDate = new Date(batch.created);
-            if (date_from && batchDate < new Date(date_from)) return false;
-            if (date_to && batchDate > new Date(date_to)) return false;
-            return true;
-          });
-
           // Apply limit if specified
-          const limitedBatches = limit ? filteredBatches.slice(0, limit) : filteredBatches;
+          const limitedBatches = limit ? batches.slice(0, limit) : batches;
 
           return {
             content: [{
               type: 'text',
               text: JSON.stringify({
                 data: limitedBatches,
-                next_cursor: null,
-                client_filtered: true,
-                total_matched: filteredBatches.length
+                total_count: limitedBatches.length,
+                ...(filtersApplied.length > 0 && { client_filtered: true, filters_applied: filtersApplied }),
               }, null, 2)
             }]
           };
@@ -692,6 +660,40 @@ export function setupServer(client: ConsignCloudClient): Server {
 
         case 'calculate_account_metrics':
           return { content: [{ type: 'text', text: JSON.stringify(await client.calculateAccountMetrics(args as any), null, 2) }] };
+
+        case 'refresh_data': {
+          const { type } = args as any;
+
+          if (type) {
+            // Refresh specific type
+            await client.refreshCache(type);
+            return {
+              content: [{
+                type: 'text',
+                text: `✅ Refreshed ${type} data from ConsignCloud API. Latest data is now available.`
+              }]
+            };
+          } else {
+            // Refresh all types
+            const types = ['items', 'sales', 'accounts', 'categories', 'locations', 'batches'];
+            console.log('[refresh_data] Refreshing all data types...');
+
+            for (const dataType of types) {
+              try {
+                await client.refreshCache(dataType);
+              } catch (error) {
+                console.error(`[refresh_data] Failed to refresh ${dataType}:`, error);
+              }
+            }
+
+            return {
+              content: [{
+                type: 'text',
+                text: `✅ Refreshed all data from ConsignCloud API. Latest data is now available.`
+              }]
+            };
+          }
+        }
 
         default:
           throw new Error(`Unknown tool: ${name}`);
