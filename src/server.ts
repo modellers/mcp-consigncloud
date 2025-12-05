@@ -10,11 +10,11 @@ export function createTools(): Tool[] {
   return [
     {
       name: 'list_items',
-      description: 'List inventory items with optional filters. Supports filtering by price, category, account, status, location, and more.',
+      description: 'List inventory items with optional filters. Supports filtering by price, category, account, status, location, date, and more.',
       inputSchema: {
         type: 'object',
         properties: {
-          limit: { type: 'number', description: 'Number of results to return (default: 1000) pagination is we need more' },
+          limit: { type: 'number', description: 'Number of results to return (default: 100, max: 100)' },
           cursor: { type: 'string', description: 'Pagination cursor' },
           status: { type: 'string', description: 'Filter by status' },
           category: { type: 'string', description: 'Filter by category ID' },
@@ -22,6 +22,8 @@ export function createTools(): Tool[] {
           location: { type: 'string', description: 'Filter by location ID' },
           tag_price_gte: { type: 'number', description: 'Filter items with price >= this value (in cents)' },
           tag_price_lte: { type: 'number', description: 'Filter items with price <= this value (in cents)' },
+          date_from: { type: 'string', description: 'Filter items created on or after this date (ISO 8601: YYYY-MM-DD)' },
+          date_to: { type: 'string', description: 'Filter items created on or before this date (ISO 8601: YYYY-MM-DD)' },
         },
       },
     },
@@ -101,13 +103,13 @@ export function createTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          limit: { type: 'number', description: 'Number of results (default: 1000)' },
+          limit: { type: 'number', description: 'Number of results (default: 100, max: 100)' },
           cursor: { type: 'string', description: 'Pagination cursor' },
           status: { type: 'string', description: 'Filter by status (completed, voided, returned)' },
           customer: { type: 'string', description: 'Filter by customer account ID' },
           location: { type: 'string', description: 'Filter by location ID' },
-          created_gte: { type: 'string', description: 'Filter sales created after this date (ISO 8601)' },
-          created_lte: { type: 'string', description: 'Filter sales created before this date (ISO 8601)' },
+          date_from: { type: 'string', description: 'Filter sales created on or after this date (ISO 8601: YYYY-MM-DD)' },
+          date_to: { type: 'string', description: 'Filter sales created on or before this date (ISO 8601: YYYY-MM-DD)' },
         },
       },
     },
@@ -139,9 +141,11 @@ export function createTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          limit: { type: 'number', description: 'Number of results (default: 1000)' },
+          limit: { type: 'number', description: 'Number of results (default: 100, max: 100)' },
           cursor: { type: 'string' },
           is_vendor: { type: 'boolean', description: 'Filter by vendor status' },
+          date_from: { type: 'string', description: 'Filter accounts created on or after this date (ISO 8601: YYYY-MM-DD)' },
+          date_to: { type: 'string', description: 'Filter accounts created on or before this date (ISO 8601: YYYY-MM-DD)' },
         },
       },
     },
@@ -208,7 +212,7 @@ export function createTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          limit: { type: 'number', description: 'Number of results (default: 1000)' },
+          limit: { type: 'number', description: 'Number of results (default: 100, max: 100)' },
           cursor: { type: 'string' },
         },
       },
@@ -230,7 +234,7 @@ export function createTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          limit: { type: 'number', description: 'Number of results (default: 1000)' },
+          limit: { type: 'number', description: 'Number of results (default: 100, max: 100)' },
           cursor: { type: 'string' },
         },
       },
@@ -293,10 +297,12 @@ export function createTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          limit: { type: 'number', description: 'Number of results (default: 1000)' },
+          limit: { type: 'number', description: 'Number of results (default: 100, max: 100)' },
           cursor: { type: 'string' },
           status: { type: 'string', enum: ['draft', 'submitted'] },
           account: { type: 'string', description: 'Filter by account ID' },
+          date_from: { type: 'string', description: 'Filter batches created on or after this date (ISO 8601: YYYY-MM-DD)' },
+          date_to: { type: 'string', description: 'Filter batches created on or before this date (ISO 8601: YYYY-MM-DD)' },
         },
       },
     },
@@ -425,9 +431,52 @@ export function setupServer(client: ConsignCloudClient): Server {
       const { name, arguments: args } = request.params;
 
       switch (name) {
-        case 'list_items':
-          const itemsParams = { limit: 1000, ...(args as any) };
-          return { content: [{ type: 'text', text: JSON.stringify(await client.listItems(itemsParams), null, 2) }] };
+        case 'list_items': {
+          const { date_from, date_to, cursor, limit, ...apiParams } = args as any;
+
+          // If no date filtering, just pass through to API
+          if (!date_from && !date_to) {
+            const itemsParams = { limit: limit || 100, cursor, ...apiParams };
+            return { content: [{ type: 'text', text: JSON.stringify(await client.listItems(itemsParams), null, 2) }] };
+          }
+
+          // Client-side date filtering required
+          let allItems: any[] = [];
+          let nextCursor: string | null = cursor || null;
+          const queryParams: any = { limit: 100, ...apiParams };
+
+          // Fetch all pages
+          do {
+            if (nextCursor) queryParams.cursor = nextCursor;
+            const response = await client.listItems(queryParams);
+            allItems = allItems.concat(response.data);
+            nextCursor = response.next_cursor;
+          } while (nextCursor);
+
+          // Apply client-side date filtering
+          const filteredItems = allItems.filter(item => {
+            if (!item.created) return false;
+            const itemDate = new Date(item.created);
+            if (date_from && itemDate < new Date(date_from)) return false;
+            if (date_to && itemDate > new Date(date_to)) return false;
+            return true;
+          });
+
+          // Apply limit if specified
+          const limitedItems = limit ? filteredItems.slice(0, limit) : filteredItems;
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                data: limitedItems,
+                next_cursor: null,
+                client_filtered: true,
+                total_matched: filteredItems.length
+              }, null, 2)
+            }]
+          };
+        }
 
         case 'get_item':
           return { content: [{ type: 'text', text: JSON.stringify(await client.getItem((args as any).id), null, 2) }] };
@@ -446,9 +495,52 @@ export function setupServer(client: ConsignCloudClient): Server {
         case 'get_item_stats':
           return { content: [{ type: 'text', text: JSON.stringify(await client.getItemStats(), null, 2) }] };
 
-        case 'list_sales':
-          const salesParams = { limit: 1000, ...(args as any) };
-          return { content: [{ type: 'text', text: JSON.stringify(await client.listSales(salesParams), null, 2) }] };
+        case 'list_sales': {
+          const { date_from, date_to, cursor, limit, ...apiParams } = args as any;
+
+          // If no date filtering, just pass through to API
+          if (!date_from && !date_to) {
+            const salesParams = { limit: limit || 100, cursor, ...apiParams };
+            return { content: [{ type: 'text', text: JSON.stringify(await client.listSales(salesParams), null, 2) }] };
+          }
+
+          // Client-side date filtering required
+          let allSales: any[] = [];
+          let nextCursor: string | null = cursor || null;
+          const queryParams: any = { limit: 100, ...apiParams };
+
+          // Fetch all pages
+          do {
+            if (nextCursor) queryParams.cursor = nextCursor;
+            const response = await client.listSales(queryParams);
+            allSales = allSales.concat(response.data);
+            nextCursor = response.next_cursor;
+          } while (nextCursor);
+
+          // Apply client-side date filtering
+          const filteredSales = allSales.filter(sale => {
+            if (!sale.created) return false;
+            const saleDate = new Date(sale.created);
+            if (date_from && saleDate < new Date(date_from)) return false;
+            if (date_to && saleDate > new Date(date_to)) return false;
+            return true;
+          });
+
+          // Apply limit if specified
+          const limitedSales = limit ? filteredSales.slice(0, limit) : filteredSales;
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                data: limitedSales,
+                next_cursor: null,
+                client_filtered: true,
+                total_matched: filteredSales.length
+              }, null, 2)
+            }]
+          };
+        }
 
         case 'get_sale':
           return { content: [{ type: 'text', text: JSON.stringify(await client.getSale((args as any).id), null, 2) }] };
@@ -456,9 +548,52 @@ export function setupServer(client: ConsignCloudClient): Server {
         case 'void_sale':
           return { content: [{ type: 'text', text: JSON.stringify(await client.voidSale((args as any).id), null, 2) }] };
 
-        case 'list_accounts':
-          const accountsParams = { limit: 1000, ...(args as any) };
-          return { content: [{ type: 'text', text: JSON.stringify(await client.listAccounts(accountsParams), null, 2) }] };
+        case 'list_accounts': {
+          const { date_from, date_to, cursor, limit, ...apiParams } = args as any;
+
+          // If no date filtering, just pass through to API
+          if (!date_from && !date_to) {
+            const accountsParams = { limit: limit || 100, cursor, ...apiParams };
+            return { content: [{ type: 'text', text: JSON.stringify(await client.listAccounts(accountsParams), null, 2) }] };
+          }
+
+          // Client-side date filtering required
+          let allAccounts: any[] = [];
+          let nextCursor: string | null = cursor || null;
+          const queryParams: any = { limit: 100, ...apiParams };
+
+          // Fetch all pages
+          do {
+            if (nextCursor) queryParams.cursor = nextCursor;
+            const response = await client.listAccounts(queryParams);
+            allAccounts = allAccounts.concat(response.data);
+            nextCursor = response.next_cursor;
+          } while (nextCursor);
+
+          // Apply client-side date filtering
+          const filteredAccounts = allAccounts.filter(account => {
+            if (!account.created) return false;
+            const accountDate = new Date(account.created);
+            if (date_from && accountDate < new Date(date_from)) return false;
+            if (date_to && accountDate > new Date(date_to)) return false;
+            return true;
+          });
+
+          // Apply limit if specified
+          const limitedAccounts = limit ? filteredAccounts.slice(0, limit) : filteredAccounts;
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                data: limitedAccounts,
+                next_cursor: null,
+                client_filtered: true,
+                total_matched: filteredAccounts.length
+              }, null, 2)
+            }]
+          };
+        }
 
         case 'get_account':
           return { content: [{ type: 'text', text: JSON.stringify(await client.getAccount((args as any).id), null, 2) }] };
@@ -474,14 +609,14 @@ export function setupServer(client: ConsignCloudClient): Server {
           return { content: [{ type: 'text', text: JSON.stringify(await client.getAccountStats((args as any).id), null, 2) }] };
 
         case 'list_categories':
-          const categoriesParams = { limit: 1000, ...(args as any) };
+          const categoriesParams = { limit: 100, ...(args as any) };
           return { content: [{ type: 'text', text: JSON.stringify(await client.listCategories(categoriesParams), null, 2) }] };
 
         case 'create_category':
           return { content: [{ type: 'text', text: JSON.stringify(await client.createCategory(args as any), null, 2) }] };
 
         case 'list_locations':
-          const locationsParams = { limit: 1000, ...(args as any) };
+          const locationsParams = { limit: 100, ...(args as any) };
           return { content: [{ type: 'text', text: JSON.stringify(await client.listLocations(locationsParams), null, 2) }] };
 
         case 'search_suggest':
@@ -495,9 +630,52 @@ export function setupServer(client: ConsignCloudClient): Server {
         case 'get_sales_trends':
           return { content: [{ type: 'text', text: JSON.stringify(await client.getSalesTrends(args as any), null, 2) }] };
 
-        case 'list_batches':
-          const batchesParams = { limit: 1000, ...(args as any) };
-          return { content: [{ type: 'text', text: JSON.stringify(await client.listBatches(batchesParams), null, 2) }] };
+        case 'list_batches': {
+          const { date_from, date_to, cursor, limit, ...apiParams } = args as any;
+
+          // If no date filtering, just pass through to API
+          if (!date_from && !date_to) {
+            const batchesParams = { limit: limit || 100, cursor, ...apiParams };
+            return { content: [{ type: 'text', text: JSON.stringify(await client.listBatches(batchesParams), null, 2) }] };
+          }
+
+          // Client-side date filtering required
+          let allBatches: any[] = [];
+          let nextCursor: string | null = cursor || null;
+          const queryParams: any = { limit: 100, ...apiParams };
+
+          // Fetch all pages
+          do {
+            if (nextCursor) queryParams.cursor = nextCursor;
+            const response = await client.listBatches(queryParams);
+            allBatches = allBatches.concat(response.data);
+            nextCursor = response.next_cursor;
+          } while (nextCursor);
+
+          // Apply client-side date filtering
+          const filteredBatches = allBatches.filter(batch => {
+            if (!batch.created) return false;
+            const batchDate = new Date(batch.created);
+            if (date_from && batchDate < new Date(date_from)) return false;
+            if (date_to && batchDate > new Date(date_to)) return false;
+            return true;
+          });
+
+          // Apply limit if specified
+          const limitedBatches = limit ? filteredBatches.slice(0, limit) : filteredBatches;
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                data: limitedBatches,
+                next_cursor: null,
+                client_filtered: true,
+                total_matched: filteredBatches.length
+              }, null, 2)
+            }]
+          };
+        }
 
         case 'create_batch':
           return { content: [{ type: 'text', text: JSON.stringify(await client.createBatch(args as any), null, 2) }] };

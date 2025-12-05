@@ -4,15 +4,43 @@
 
 ### Date Filtering
 The following date filter parameters are **NOT supported** by the ConsignCloud API:
-- `created_gte` - Unknown parameter
-- `created_lte` - Unknown parameter
-- `date_from` - Unknown parameter
-- `date_to` - Unknown parameter
+- `date_from` - Unknown parameter (not supported by API)
+- `date_to` - Unknown parameter (not supported by API)
 
 **Note:** The `created` parameter exists but requires full ISO 8601 datetime format (`2024-01-01T00:00:00Z`), not just a date.
 
 ### Implication
-Our calculation tools (`calculate_inventory_value`, `calculate_sales_totals`, `calculate_account_metrics`) currently accept `date_from` and `date_to` parameters, but these **cannot be passed to the API**. They are placeholders for future functionality if the API adds date filtering support.
+The following MCP tools now support `date_from` and `date_to` parameters with **client-side filtering**:
+
+**List Endpoints:**
+- ✅ `list_sales` - Filter sales by creation date
+- ✅ `list_items` - Filter inventory items by creation date
+- ✅ `list_accounts` - Filter accounts by creation date
+- ✅ `list_batches` - Filter batches by creation date
+
+**Aggregation Endpoints:**
+- ✅ `calculate_inventory_value` - Filter items by date before aggregating
+- ✅ `calculate_sales_totals` - Filter sales by date before aggregating
+- ✅ `calculate_account_metrics` - Filter by date before calculating metrics
+
+**How it works:**
+1. Fetch all records from the API (paginating with limit=100 per page)
+2. Apply client-side filtering by date using the `created` field
+3. Return filtered results with `client_filtered: true` flag and `total_matched` count
+
+This works but may be slower for large datasets (e.g., fetching all 2678 items to filter by date).
+
+### Pagination Limits
+The ConsignCloud API has a **maximum limit of 100 results per page**.
+
+- ❌ `limit=200` - Returns 400 Bad Request
+- ❌ `limit=500` - Returns 400 Bad Request
+- ❌ `limit=1000` - Returns 400 Bad Request
+- ✅ `limit=100` - Works (maximum allowed)
+- ✅ `limit=50` - Works
+- ✅ `limit=10` - Works
+
+**Fixed:** All MCP endpoints now use `limit: 100` as the default (max allowed by API).
 
 ## ✅ What DOES Work
 
@@ -63,7 +91,8 @@ client.getSalesTrends({
 
 ## 📝 Recommendations
 
-1. **Remove date filtering from calculation tools** - Since the API doesn't support date range filtering on items/sales, remove `date_from` and `date_to` parameters from:
+1. ✅ **Date filtering implemented** - Client-side filtering now works for:
+   - `list_sales` with `date_from` and `date_to`
    - `calculate_inventory_value`
    - `calculate_sales_totals`
    - `calculate_account_metrics`
@@ -72,7 +101,7 @@ client.getSalesTrends({
    - Items: Use `active`, `sold`, etc. instead of `available`
    - Sales: Use `finalized` instead of `completed`
 
-3. **Fix sales trends** - Update `interval` parameter to `bucket_size` and make all 3 parameters required.
+3. ✅ **Sales trends fixed** - Uses `bucket_size` parameter (all 3 parameters required).
 
 ## 🧪 Test Results
 
