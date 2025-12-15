@@ -5,6 +5,7 @@ import {
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { CachingClient } from './cache-wrapper.js';
+import { EntityResolver } from './resolvers.js';
 
 export function createTools(): Tool[] {
   return [
@@ -17,9 +18,9 @@ export function createTools(): Tool[] {
           limit: { type: 'number', description: 'Number of results to return (default: 100, max: 100)' },
           cursor: { type: 'string', description: 'Pagination cursor' },
           status: { type: 'string', description: 'Filter by status' },
-          category: { type: 'string', description: 'Filter by category ID' },
-          account: { type: 'string', description: 'Filter by account ID' },
-          location: { type: 'string', description: 'Filter by location ID' },
+          category: { type: 'string', description: 'Filter by category ID or name (supports fuzzy matching)' },
+          account: { type: 'string', description: 'Filter by account ID, name, email, or number (supports fuzzy matching)' },
+          location: { type: 'string', description: 'Filter by location ID or name (supports fuzzy matching)' },
           tag_price_gte: { type: 'number', description: 'Filter items with price >= this value (in cents)' },
           tag_price_lte: { type: 'number', description: 'Filter items with price <= this value (in cents)' },
           date_from: { type: 'string', description: 'Filter items created on or after this date (ISO 8601: YYYY-MM-DD)' },
@@ -106,8 +107,8 @@ export function createTools(): Tool[] {
           limit: { type: 'number', description: 'Number of results (default: 100, max: 100)' },
           cursor: { type: 'string', description: 'Pagination cursor' },
           status: { type: 'string', description: 'Filter by status (completed, voided, returned)' },
-          customer: { type: 'string', description: 'Filter by customer account ID' },
-          location: { type: 'string', description: 'Filter by location ID' },
+          customer: { type: 'string', description: 'Filter by customer account ID, name, email, or number (supports fuzzy matching)' },
+          location: { type: 'string', description: 'Filter by location ID or name (supports fuzzy matching)' },
           date_from: { type: 'string', description: 'Filter sales created on or after this date (ISO 8601: YYYY-MM-DD)' },
           date_to: { type: 'string', description: 'Filter sales created on or before this date (ISO 8601: YYYY-MM-DD)' },
         },
@@ -300,7 +301,7 @@ export function createTools(): Tool[] {
           limit: { type: 'number', description: 'Number of results (default: 100, max: 100)' },
           cursor: { type: 'string' },
           status: { type: 'string', enum: ['draft', 'submitted'] },
-          account: { type: 'string', description: 'Filter by account ID' },
+          account: { type: 'string', description: 'Filter by account ID, name, email, or number (supports fuzzy matching)' },
           date_from: { type: 'string', description: 'Filter batches created on or after this date (ISO 8601: YYYY-MM-DD)' },
           date_to: { type: 'string', description: 'Filter batches created on or before this date (ISO 8601: YYYY-MM-DD)' },
         },
@@ -433,6 +434,7 @@ export function setupServer(client: CachingClient): Server {
   );
 
   const tools = createTools();
+  const resolver = new EntityResolver(client);
 
   // Handle list tools request
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -446,10 +448,58 @@ export function setupServer(client: CachingClient): Server {
 
       switch (name) {
         case 'list_items': {
-          const { date_from, date_to, limit, ...apiParams } = args as any;
+          const { date_from, date_to, limit, category, account, location, ...apiParams } = args as any;
+
+          // Resolve names to IDs if needed
+          const resolvedParams: Record<string, any> = { ...apiParams };
+
+          if (category) {
+            const categoryId = await resolver.resolveCategoryId(category);
+            if (categoryId) {
+              resolvedParams.category = categoryId;
+            } else {
+              return {
+                content: [{
+                  type: 'text',
+                  text: `Error: Category "${category}" not found. Please check the category name or ID.`
+                }],
+                isError: true,
+              };
+            }
+          }
+
+          if (account) {
+            const accountId = await resolver.resolveAccountId(account);
+            if (accountId) {
+              resolvedParams.account = accountId;
+            } else {
+              return {
+                content: [{
+                  type: 'text',
+                  text: `Error: Account "${account}" not found. Please check the account name, email, number, or ID.`
+                }],
+                isError: true,
+              };
+            }
+          }
+
+          if (location) {
+            const locationId = await resolver.resolveLocationId(location);
+            if (locationId) {
+              resolvedParams.location = locationId;
+            } else {
+              return {
+                content: [{
+                  type: 'text',
+                  text: `Error: Location "${location}" not found. Please check the location name or ID.`
+                }],
+                isError: true,
+              };
+            }
+          }
 
           // Fetch from cache (wrapper handles pagination)
-          let items = await client.listItems(apiParams);
+          let items = await client.listItems(resolvedParams);
 
           // Apply client-side date filtering if needed
           const filtersApplied: string[] = [];
@@ -498,10 +548,43 @@ export function setupServer(client: CachingClient): Server {
           return { content: [{ type: 'text', text: JSON.stringify(await client.getItemStats(), null, 2) }] };
 
         case 'list_sales': {
-          const { date_from, date_to, limit, ...apiParams } = args as any;
+          const { date_from, date_to, limit, location, customer, ...apiParams } = args as any;
+
+          // Resolve names to IDs if needed
+          const resolvedParams: Record<string, any> = { ...apiParams };
+
+          if (location) {
+            const locationId = await resolver.resolveLocationId(location);
+            if (locationId) {
+              resolvedParams.location = locationId;
+            } else {
+              return {
+                content: [{
+                  type: 'text',
+                  text: `Error: Location "${location}" not found. Please check the location name or ID.`
+                }],
+                isError: true,
+              };
+            }
+          }
+
+          if (customer) {
+            const customerId = await resolver.resolveAccountId(customer);
+            if (customerId) {
+              resolvedParams.customer = customerId;
+            } else {
+              return {
+                content: [{
+                  type: 'text',
+                  text: `Error: Customer account "${customer}" not found. Please check the account name, email, number, or ID.`
+                }],
+                isError: true,
+              };
+            }
+          }
 
           // Fetch from cache (wrapper handles pagination)
-          let sales = await client.listSales(apiParams);
+          let sales = await client.listSales(resolvedParams);
 
           // Apply client-side date filtering if needed
           const filtersApplied: string[] = [];
@@ -611,10 +694,28 @@ export function setupServer(client: CachingClient): Server {
           return { content: [{ type: 'text', text: JSON.stringify(await client.getSalesTrends(args as any), null, 2) }] };
 
         case 'list_batches': {
-          const { date_from, date_to, limit, ...apiParams } = args as any;
+          const { date_from, date_to, limit, account, ...apiParams } = args as any;
+
+          // Resolve names to IDs if needed
+          const resolvedParams: Record<string, any> = { ...apiParams };
+
+          if (account) {
+            const accountId = await resolver.resolveAccountId(account);
+            if (accountId) {
+              resolvedParams.account = accountId;
+            } else {
+              return {
+                content: [{
+                  type: 'text',
+                  text: `Error: Account "${account}" not found. Please check the account name, email, number, or ID.`
+                }],
+                isError: true,
+              };
+            }
+          }
 
           // Fetch from cache (wrapper handles pagination)
-          let batches = await client.listBatches(apiParams);
+          let batches = await client.listBatches(resolvedParams);
 
           // Apply client-side date filtering if needed
           const filtersApplied: string[] = [];
