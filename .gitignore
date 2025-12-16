@@ -29,3 +29,6 @@ Thumbs.db
 *.tsbuildinfo
 run.sh
 desktop_consignclaud.json
+
+# Test data files
+test-*.json
